@@ -9,18 +9,21 @@ fun playerAnswer(body: String): PlayerAnswer {
     val playability = root.obj("playabilityStatus")
     val streaming = root.obj("streamingData")
     val details = root.obj("videoDetails")
-    val muxed = streaming?.hasUrl("formats") == true
-    val adaptive = streaming?.hasUrl("adaptiveFormats") == true
-    val hls = streaming?.text("hlsManifestUrl")?.isNotEmpty() == true
+    val muxedUrls = streaming?.urls("formats") ?: emptyList()
+    val adaptiveUrls = streaming?.urls("adaptiveFormats") ?: emptyList()
+    val hlsUrl = streaming?.text("hlsManifestUrl")?.takeIf { it.isNotEmpty() }
     val live = details?.bool("isLive") == true || playability?.fields?.containsKey("liveStreamability") == true
     return PlayerAnswer(
         false,
         playability?.text("status"),
         playability?.text("reason"),
-        muxed || adaptive,
-        hls,
-        muxed,
-        live
+        muxedUrls.isNotEmpty() || adaptiveUrls.isNotEmpty(),
+        hlsUrl != null,
+        muxedUrls.isNotEmpty(),
+        live,
+        hlsUrl,
+        muxedUrls,
+        adaptiveUrls
     )
 }
 
@@ -40,12 +43,14 @@ private fun Json.Obj.text(name: String) = (fields[name] as? Json.Str)?.value
 
 private fun Json.Obj.bool(name: String) = (fields[name] as? Json.Bool)?.value
 
-private fun Json.Obj.hasUrl(name: String): Boolean {
-    val items = (fields[name] as? Json.Arr)?.items ?: return false
-    return items.any { item ->
+private fun Json.Obj.urls(name: String): List<String> {
+    val items = (fields[name] as? Json.Arr)?.items ?: return emptyList()
+    val urls = ArrayList<String>()
+    for (item in items) {
         val url = (item as? Json.Obj)?.text("url")
-        url != null && url.isNotEmpty()
+        if (url != null && url.isNotEmpty()) urls.add(url)
     }
+    return urls
 }
 
 private class JsonEnd : RuntimeException()

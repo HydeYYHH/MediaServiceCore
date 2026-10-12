@@ -38,7 +38,10 @@ data class PlayerAnswer(
     val hasDirectUrl: Boolean,
     val hasHls: Boolean,
     val hasMuxed: Boolean,
-    val live: Boolean
+    val live: Boolean,
+    val hlsUrl: String? = null,
+    val muxedUrls: List<String> = emptyList(),
+    val adaptiveUrls: List<String> = emptyList()
 )
 
 data class AttemptResult(val form: PlaybackForm, val client: PlayerClient?)
