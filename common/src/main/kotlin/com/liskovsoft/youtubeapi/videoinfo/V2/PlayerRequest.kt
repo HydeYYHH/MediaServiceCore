@@ -36,7 +36,12 @@ private val specs = mapOf(
     )
 )
 
-fun playerQuery(client: PlayerClient, videoId: String, visitor: String?): PlayerQuery {
+fun playerQuery(
+    client: PlayerClient,
+    videoId: String,
+    visitor: String?,
+    signatureTimestamp: Int? = null
+): PlayerQuery {
     if (!VIDEO_ID.matches(videoId)) return PlayerQuery("", emptyMap(), "")
     val spec = specs.getValue(client)
     val headers = linkedMapOf(
@@ -46,7 +51,9 @@ fun playerQuery(client: PlayerClient, videoId: String, visitor: String?): Player
         "X-Youtube-Client-Version" to spec.version
     )
     if (!visitor.isNullOrEmpty()) headers["X-Goog-Visitor-Id"] = visitor
-    val body = """{"context":{"client":{"clientName":"${spec.name}","clientVersion":"${spec.version}","hl":"en","gl":"US"}},"videoId":"$videoId","contentCheckOk":true,"racyCheckOk":true}"""
+    val playback = if (signatureTimestamp == null) "" else
+        """"playbackContext":{"contentPlaybackContext":{"signatureTimestamp":$signatureTimestamp}},"""
+    val body = """{"context":{"client":{"clientName":"${spec.name}","clientVersion":"${spec.version}","hl":"en","gl":"US"}},${playback}"videoId":"$videoId","contentCheckOk":true,"racyCheckOk":true}"""
     return PlayerQuery(PLAYER_URL, headers, body)
 }
 

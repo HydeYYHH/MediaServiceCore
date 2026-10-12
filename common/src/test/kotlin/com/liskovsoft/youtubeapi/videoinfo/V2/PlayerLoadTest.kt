@@ -71,6 +71,16 @@ class PlayerLoadTest {
     }
 
     @Test
+    fun sendsTheSignatureTimestamp() {
+        var body = ""
+        loadPlayer(walk, SignIn.SIGNED_OUT, "dQw4w9WgXcQ", null, null, 19395) { query ->
+            body = query.body
+            Pair(200, direct)
+        }
+        assertTrue(body.contains("\"signatureTimestamp\":19395"))
+    }
+
+    @Test
     fun badVideoIdSkipsPost() {
         var called = false
         val load = loadPlayer(walk, SignIn.SIGNED_OUT, "bad id", null) {

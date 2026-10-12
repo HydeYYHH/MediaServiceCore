@@ -91,4 +91,21 @@ class PlayerRequestTest {
         assertFalse(called)
         assertTrue(answer.transportFailed)
     }
+
+    @Test
+    fun readsSignatureTimestamp() {
+        assertEquals(19395, signatureTimestamp("player.signatureTimestamp:19395;"))
+        assertEquals(20522, signatureTimestamp("signatureTimestamp=20522,"))
+        assertNull(signatureTimestamp("signatureTimestamp:"))
+        assertNull(signatureTimestamp("no marker"))
+    }
+
+    @Test
+    fun signatureTimestampInBody() {
+        val withTimestamp = playerQuery(PlayerClient.WEB, "dQw4w9WgXcQ", null, 19395)
+        assertTrue(withTimestamp.body.contains("\"playbackContext\":{\"contentPlaybackContext\":{\"signatureTimestamp\":19395}}"))
+        assertTrue(withTimestamp.body.indexOf("playbackContext") < withTimestamp.body.indexOf("\"videoId\""))
+        val without = playerQuery(PlayerClient.WEB, "dQw4w9WgXcQ", null)
+        assertFalse(without.body.contains("playbackContext"))
+    }
 }

@@ -12,6 +12,7 @@ fun loadPlayer(
     videoId: String,
     visitor: String?,
     solve: ((Set<String>, Set<String>) -> PlayerChallenge)? = null,
+    signatureTimestamp: Int? = null,
     post: (PlayerQuery) -> Pair<Int, String>
 ): PlayerLoad {
     if (playerQuery(PlayerClient.WEB, videoId, visitor).url.isEmpty()) {
@@ -19,7 +20,7 @@ fun loadPlayer(
     }
     var played: PlayerAnswer? = null
     val result = walk.run(signIn) { client ->
-        val fetched = fetchPlayer(playerQuery(client, videoId, visitor), post)
+        val fetched = fetchPlayer(playerQuery(client, videoId, visitor, signatureTimestamp), post)
         val answer = if (solve == null) fetched else openFormats(fetched, solve)
         played = answer
         answer
