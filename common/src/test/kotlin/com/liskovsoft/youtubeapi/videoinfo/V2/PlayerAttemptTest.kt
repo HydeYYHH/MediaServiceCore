@@ -54,6 +54,46 @@ class PlayerAttemptTest {
     }
 
     @Test
+    fun contentRefusalKeepsWalkingAndLeavesTheVodQueue() {
+        val vod = ClientQueueKey(SignIn.SIGNED_OUT, PlaybackForm.VOD)
+        val asked = ArrayList<PlayerClient>()
+        val result = walk.run(SignIn.SIGNED_OUT) { client ->
+            asked.add(client)
+            if (client == PlayerClient.VISIONOS) answer(status = "AGE_CHECK_REQUIRED")
+            else answer(hasDirectUrl = true)
+        }
+        assertEquals(AttemptResult(PlaybackForm.VOD, PlayerClient.WEB), result)
+        assertEquals(listOf(PlayerClient.VISIONOS, PlayerClient.WEB), asked)
+        assertEquals(PlayerClientQueues.defaultOrder(vod), queues.order(vod))
+    }
+
+    @Test
+    fun softFailurePromotesTheClientThatPlayed() {
+        val vod = ClientQueueKey(SignIn.SIGNED_OUT, PlaybackForm.VOD)
+        val result = walk.run(SignIn.SIGNED_OUT) { client ->
+            if (client == PlayerClient.VISIONOS) answer() else answer(hasDirectUrl = true)
+        }
+        assertEquals(AttemptResult(PlaybackForm.VOD, PlayerClient.WEB), result)
+        assertEquals(PlayerClient.WEB, queues.order(vod).first())
+    }
+
+    @Test
+    fun liveSwitchLeavesTheVodQueue() {
+        val vod = ClientQueueKey(SignIn.SIGNED_OUT, PlaybackForm.VOD)
+        val live = ClientQueueKey(SignIn.SIGNED_OUT, PlaybackForm.LIVE)
+        val asked = ArrayList<PlayerClient>()
+        val result = walk.run(SignIn.SIGNED_OUT) { client ->
+            asked.add(client)
+            if (client == PlayerClient.VISIONOS) answer(live = true)
+            else answer(hasHls = true, live = true)
+        }
+        assertEquals(AttemptResult(PlaybackForm.LIVE, PlayerClient.WEB), result)
+        assertEquals(listOf(PlayerClient.VISIONOS, PlayerClient.WEB), asked)
+        assertEquals(PlayerClientQueues.defaultOrder(vod), queues.order(vod))
+        assertEquals(PlayerClient.WEB, queues.order(live).first())
+    }
+
+    @Test
     fun contentRefusalFinishLeavesTheQueue() {
         val vod = ClientQueueKey(SignIn.SIGNED_IN, PlaybackForm.VOD)
         walk.finish(vod, listOf(
@@ -63,3 +103,13 @@ class PlayerAttemptTest {
         assertEquals(PlayerClientQueues.defaultOrder(vod), queues.order(vod))
     }
 }
+
+private fun answer(
+    transportFailed: Boolean = false,
+    status: String? = "OK",
+    reason: String? = null,
+    hasDirectUrl: Boolean = false,
+    hasHls: Boolean = false,
+    hasMuxed: Boolean = false,
+    live: Boolean = false
+) = PlayerAnswer(transportFailed, status, reason, hasDirectUrl, hasHls, hasMuxed, live)
