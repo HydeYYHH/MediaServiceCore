@@ -113,6 +113,54 @@ class PlayerResponseTest {
     }
 
     @Test
+    fun keepsCipherWithoutCountingItPlayable() {
+        val answer = playerAnswer("""
+            {"playabilityStatus":{"status":"OK"},
+             "streamingData":{"formats":[
+               {"itag":18,"mimeType":"video/mp4","signatureCipher":"s=abc&sp=sig&url=https://hidden.example/x"}
+             ]}}
+        """)
+        assertEquals(
+            PlayerFormat(18, "video/mp4", null, "s=abc&sp=sig&url=https://hidden.example/x"),
+            answer.muxedFormats[0]
+        )
+        assertTrue(answer.muxedUrls.isEmpty())
+        assertFalse(answer.hasMuxed)
+        assertFalse(answer.hasDirectUrl)
+        assertEquals(ClientOutcome.SOFT, clientOutcome(
+            answer.transportFailed, answer.status, answer.reason,
+            answer.hasDirectUrl, answer.hasHls, answer.hasMuxed, answer.live
+        ))
+    }
+
+    @Test
+    fun plainUrlStaysOnTheFormatAndTheUrlList() {
+        val answer = playerAnswer("""
+            {"playabilityStatus":{"status":"OK"},
+             "streamingData":{"adaptiveFormats":[
+               {"itag":137,"mimeType":"video/mp4","url":"https://adaptive.example/1"}
+             ]}}
+        """)
+        assertEquals(PlayerFormat(137, "video/mp4", "https://adaptive.example/1", null), answer.adaptiveFormats[0])
+        assertEquals(listOf("https://adaptive.example/1"), answer.adaptiveUrls)
+        assertTrue(answer.hasDirectUrl)
+    }
+
+    @Test
+    fun cipherFieldWinsOverSignatureCipher() {
+        val answer = playerAnswer("""
+            {"playabilityStatus":{"status":"OK"},
+             "streamingData":{"formats":[
+               {"itag":22,"cipher":"s=from-cipher","signatureCipher":"s=from-signature"},
+               {"itag":18.5,"cipher":"s=frac"}
+             ]}}
+        """)
+        assertEquals("s=from-cipher", answer.muxedFormats[0].cipher)
+        assertNull(answer.muxedFormats[1].itag)
+        assertEquals("s=frac", answer.muxedFormats[1].cipher)
+    }
+
+    @Test
     fun blankBody() {
         val answer = playerAnswer("  ")
         assertFalse(answer.transportFailed)

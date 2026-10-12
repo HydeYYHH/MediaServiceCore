@@ -41,7 +41,16 @@ data class PlayerAnswer(
     val live: Boolean,
     val hlsUrl: String? = null,
     val muxedUrls: List<String> = emptyList(),
-    val adaptiveUrls: List<String> = emptyList()
+    val adaptiveUrls: List<String> = emptyList(),
+    val muxedFormats: List<PlayerFormat> = emptyList(),
+    val adaptiveFormats: List<PlayerFormat> = emptyList()
+)
+
+data class PlayerFormat(
+    val itag: Int?,
+    val mimeType: String?,
+    val url: String?,
+    val cipher: String?
 )
 
 data class AttemptResult(val form: PlaybackForm, val client: PlayerClient?)
