@@ -1,24 +1,37 @@
 // Top-level build file where you can add configuration options common to all sub-projects/modules.
 
+def sharedSettings = ['../SharedModules/core_settings.gradle', 'SharedModules/core_settings.gradle']
+        .collect { new File(rootDir, it) }
+        .find { it.exists() }
+
 buildscript {
     repositories {
-        google()
-        jcenter()
+        mavenCentral()
     }
-
     dependencies {
-        classpath 'com.android.tools.build:gradle:3.3.1'
-        
-
         // NOTE: Do not place your application dependencies here; they belong
         // in the individual module build.gradle files
     }
 }
 
+if (sharedSettings != null) {
+    buildscript.repositories.google()
+    buildscript.repositories.jcenter()
+    buildscript.dependencies.add('classpath', 'com.android.tools.build:gradle:3.3.1')
+}
+
 allprojects {
     repositories {
-        google()
-        jcenter()
+        mavenCentral()
+    }
+}
+
+if (sharedSettings != null) {
+    allprojects {
+        repositories {
+            google()
+            jcenter()
+        }
     }
 }
 
