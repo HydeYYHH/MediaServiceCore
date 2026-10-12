@@ -49,6 +49,28 @@ class PlayerLoadTest {
     }
 
     @Test
+    fun solvedCipherPlaysTheFirstClient() {
+        val vod = ClientQueueKey(SignIn.SIGNED_OUT, PlaybackForm.VOD)
+        val body = """
+            {"playabilityStatus":{"status":"OK"},
+             "streamingData":{"formats":[
+               {"itag":18,"signatureCipher":"s=abc&sp=sig&url=https%3A%2F%2Frr.example%2Fvideoplayback%3Fid%3Dv"}
+             ]}}
+        """
+        val load = loadPlayer(
+            walk,
+            SignIn.SIGNED_OUT,
+            "dQw4w9WgXcQ",
+            null,
+            { _, _ -> PlayerChallenge(mapOf("abc" to "solved"), emptyMap()) }
+        ) { Pair(200, body) }
+        assertEquals(PlayerClient.VISIONOS, load.client)
+        assertTrue(load.answer!!.hasMuxed)
+        assertTrue(load.answer!!.muxedUrls[0].contains("sig=solved"))
+        assertEquals(PlayerClientQueues.defaultOrder(vod), queues.order(vod))
+    }
+
+    @Test
     fun badVideoIdSkipsPost() {
         var called = false
         val load = loadPlayer(walk, SignIn.SIGNED_OUT, "bad id", null) {
