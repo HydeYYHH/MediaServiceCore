@@ -160,6 +160,42 @@ class PlayerPlaybackTest {
         assertFalse(followed)
     }
 
+    @Test
+    fun cacheSkipsScriptAndSolver() {
+        val cache = MemoryPlaybackCache()
+        val page = """"jsUrl":"https://www.youtube.com/s/player/abc/base.js""""
+        val body = """
+            {"playabilityStatus":{"status":"OK"},
+             "streamingData":{"formats":[
+               {"itag":18,"height":480,"signatureCipher":"s=abc&sp=sig&url=https%3A%2F%2Frr.example%2Fv"}
+             ]}}
+        """
+        var gets = 0
+        var solves = 0
+        fun load() = loadPlayback(
+            walk,
+            SignIn.SIGNED_OUT,
+            "dQw4w9WgXcQ",
+            null,
+            page,
+            solve = { _, _ ->
+                solves++
+                PlayerChallenge(mapOf("abc" to "solved"), emptyMap())
+            },
+            get = {
+                gets++
+                "signatureTimestamp:19395;"
+            },
+            cache = cache
+        ) { Pair(200, body) }
+        val first = load()
+        val second = load()
+        assertEquals(1, gets)
+        assertEquals(1, solves)
+        assertTrue(first.playback.videoUrl!!.contains("sig=solved"))
+        assertEquals(first.playback.videoUrl, second.playback.videoUrl)
+    }
+
     private fun format(
         url: String,
         mime: String = "video/mp4",
