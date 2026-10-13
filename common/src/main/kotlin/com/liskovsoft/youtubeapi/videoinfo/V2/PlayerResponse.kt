@@ -48,8 +48,8 @@ private fun Json.Obj.text(name: String) = (fields[name] as? Json.Str)?.value
 
 private fun Json.Obj.bool(name: String) = (fields[name] as? Json.Bool)?.value
 
-private fun Json.Obj.itag(): Int? {
-    val text = (fields["itag"] as? Json.Num)?.text ?: return null
+private fun Json.Obj.integer(name: String): Int? {
+    val text = (fields[name] as? Json.Num)?.text ?: return null
     val digits = if (text.startsWith("-")) text.substring(1) else text
     if (digits.isEmpty() || digits.any { it !in '0'..'9' }) return null
     return text.toIntOrNull()
@@ -64,7 +64,15 @@ private fun Json.Obj.formats(name: String): List<PlayerFormat> {
         val cipher = format.text("cipher")?.takeIf { it.isNotEmpty() }
             ?: format.text("signatureCipher")?.takeIf { it.isNotEmpty() }
         if (url == null && cipher == null) continue
-        formats.add(PlayerFormat(format.itag(), format.text("mimeType")?.takeIf { it.isNotEmpty() }, url, cipher))
+        formats.add(PlayerFormat(
+            format.integer("itag"),
+            format.text("mimeType")?.takeIf { it.isNotEmpty() },
+            url,
+            cipher,
+            format.integer("height"),
+            format.integer("bitrate"),
+            format.integer("fps")
+        ))
     }
     return formats
 }

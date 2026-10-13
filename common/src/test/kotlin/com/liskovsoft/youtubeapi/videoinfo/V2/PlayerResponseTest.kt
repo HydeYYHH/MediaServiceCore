@@ -80,6 +80,23 @@ class PlayerResponseTest {
     }
 
     @Test
+    fun keepsFormatSize() {
+        val answer = playerAnswer("""
+            {"playabilityStatus":{"status":"OK"},
+             "streamingData":{"formats":[
+               {"itag":18,"url":"https://muxed.example/a","height":720,"bitrate":800000,"fps":30},
+               {"itag":22,"url":"https://muxed.example/b","height":1080.5,"bitrate":1000,"fps":60}
+             ]}}
+        """)
+        assertEquals(720, answer.muxedFormats[0].height)
+        assertEquals(800000, answer.muxedFormats[0].bitrate)
+        assertEquals(30, answer.muxedFormats[0].fps)
+        assertNull(answer.muxedFormats[1].height)
+        assertEquals(1000, answer.muxedFormats[1].bitrate)
+        assertEquals(60, answer.muxedFormats[1].fps)
+    }
+
+    @Test
     fun ageCheckIgnoresObjectReason() {
         val answer = playerAnswer("""
             {"playabilityStatus":{"status":"AGE_CHECK_REQUIRED","reason":{"simpleText":"Sign in"}}}

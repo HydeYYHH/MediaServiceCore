@@ -50,7 +50,10 @@ data class PlayerFormat(
     val itag: Int?,
     val mimeType: String?,
     val url: String?,
-    val cipher: String?
+    val cipher: String?,
+    val height: Int? = null,
+    val bitrate: Int? = null,
+    val fps: Int? = null
 )
 
 data class AttemptResult(val form: PlaybackForm, val client: PlayerClient?)
