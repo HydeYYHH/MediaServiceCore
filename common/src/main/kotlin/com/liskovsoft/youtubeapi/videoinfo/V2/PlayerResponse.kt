@@ -33,7 +33,13 @@ fun playerAnswer(body: String): PlayerAnswer {
 
 private fun emptyAnswer() = PlayerAnswer(false, null, null, false, false, false, false)
 
-private sealed class Json {
+internal fun jsonObject(body: String): Json.Obj? = try {
+    JsonReader(body.trim()).parse() as? Json.Obj
+} catch (failure: JsonEnd) {
+    null
+}
+
+internal sealed class Json {
     object Null : Json()
     class Bool(val value: Boolean) : Json()
     class Str(val value: String) : Json()
@@ -42,11 +48,11 @@ private sealed class Json {
     class Arr(val items: List<Json>) : Json()
 }
 
-private fun Json.Obj.obj(name: String) = fields[name] as? Json.Obj
+internal fun Json.Obj.obj(name: String) = fields[name] as? Json.Obj
 
-private fun Json.Obj.text(name: String) = (fields[name] as? Json.Str)?.value
+internal fun Json.Obj.text(name: String) = (fields[name] as? Json.Str)?.value
 
-private fun Json.Obj.bool(name: String) = (fields[name] as? Json.Bool)?.value
+internal fun Json.Obj.bool(name: String) = (fields[name] as? Json.Bool)?.value
 
 private fun Json.Obj.integer(name: String): Int? {
     val text = (fields[name] as? Json.Num)?.text ?: return null
@@ -86,9 +92,9 @@ private fun plainUrls(formats: List<PlayerFormat>): List<String> {
     return urls
 }
 
-private class JsonEnd : RuntimeException()
+internal class JsonEnd : RuntimeException()
 
-private class JsonReader(private val text: String) {
+internal class JsonReader(private val text: String) {
     private var i = 0
 
     fun parse(): Json {

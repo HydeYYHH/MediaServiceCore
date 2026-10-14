@@ -57,6 +57,21 @@ fun playerQuery(
     return PlayerQuery(PLAYER_URL, headers, body)
 }
 
+internal fun videoIdAccepted(videoId: String) = VIDEO_ID.matches(videoId)
+
+internal fun webQuery(url: String, payload: String, visitor: String?): PlayerQuery {
+    val spec = specs.getValue(PlayerClient.WEB)
+    val headers = linkedMapOf(
+        "Content-Type" to "application/json",
+        "User-Agent" to spec.agent,
+        "X-Youtube-Client-Name" to spec.id,
+        "X-Youtube-Client-Version" to spec.version
+    )
+    if (!visitor.isNullOrEmpty()) headers["X-Goog-Visitor-Id"] = visitor
+    val body = """{"context":{"client":{"clientName":"${spec.name}","clientVersion":"${spec.version}","hl":"en","gl":"US"}},$payload}"""
+    return PlayerQuery(url, headers, body)
+}
+
 fun fetchPlayer(query: PlayerQuery, post: (PlayerQuery) -> Pair<Int, String>): PlayerAnswer {
     if (query.url.isEmpty()) return transportFailure()
     val http = try {
