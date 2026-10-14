@@ -10,12 +10,16 @@ data class Comment(
     val likeCount: String?,
     val liked: Boolean,
     val replyKey: String?,
-    val authorPhoto: String?
+    val authorPhoto: String?,
+    val likeKey: String?,
+    val unlikeKey: String?,
+    val deleteKey: String?,
+    val replyCreateKey: String?
 )
 
-data class CommentPage(val comments: List<Comment>, val nextKey: String?)
+data class CommentPage(val comments: List<Comment>, val nextKey: String?, val createKey: String?)
 
-private val emptyPage = CommentPage(emptyList(), null)
+private val emptyPage = CommentPage(emptyList(), null, null)
 
 fun commentQuery(videoId: String?, continuation: String?, visitor: String?): PlayerQuery {
     if (videoId != null && videoId.isNotEmpty() && !videoIdAccepted(videoId)) {
@@ -35,7 +39,8 @@ fun commentKey(body: String): String? {
 }
 
 fun commentPage(body: String): CommentPage {
-    val section = jsonObject(body)?.obj("continuationContents")?.obj("itemSectionContinuation") ?: return emptyPage
+    val root = jsonObject(body) ?: return emptyPage
+    val section = root.obj("continuationContents")?.obj("itemSectionContinuation") ?: return emptyPage
     val comments = ArrayList<Comment>()
     val contents = section.fields["contents"] as? Json.Arr
     if (contents != null) {
@@ -52,11 +57,16 @@ fun commentPage(body: String): CommentPage {
                 displayText(renderer.obj("voteCount")),
                 renderer.bool("isLiked") == true,
                 renderer.obj("replies")?.let { firstToken(it) },
-                firstThumbnail(renderer.obj("authorThumbnail"))
+                firstThumbnail(renderer.obj("authorThumbnail")),
+                likeAction(renderer, "defaultServiceEndpoint"),
+                likeAction(renderer, "toggledServiceEndpoint"),
+                renderer.obj("actionMenu")?.let { deleteKey(it) },
+                firstNamed(renderer, "createReplyParams")
             ))
         }
     }
-    return CommentPage(comments, sectionContinuation(section))
+    val createKey = headerCreateKey(section) ?: firstNamed(root, "createCommentParams")
+    return CommentPage(comments, sectionContinuation(section), createKey)
 }
 
 fun loadComments(
@@ -67,7 +77,10 @@ fun loadComments(
     val opened = postPage(commentQuery(videoId, null, visitor), post) ?: return emptyPage
     val key = commentKey(opened) ?: return emptyPage
     val page = postPage(commentQuery(null, key, visitor), post) ?: return emptyPage
-    return commentPage(page)
+    val parsed = commentPage(page)
+    if (parsed.createKey != null) return parsed
+    val fromWatch = jsonObject(opened)?.let { firstNamed(it, "createCommentParams") }
+    return if (fromWatch == null) parsed else parsed.copy(createKey = fromWatch)
 }
 
 private fun postPage(query: PlayerQuery, post: (PlayerQuery) -> Pair<Int, String>): String? {
@@ -129,6 +142,65 @@ private fun firstThumbnail(node: Json.Obj?): String? {
         if (url != null && url.isNotEmpty()) return url
     }
     return null
+}
+
+private fun headerCreateKey(section: Json.Obj): String? {
+    return section.obj("header")
+        ?.obj("commentsHeaderRenderer")
+        ?.obj("createRenderer")
+        ?.obj("commentSimpleboxRenderer")
+        ?.obj("submitButton")
+        ?.obj("buttonRenderer")
+        ?.obj("serviceEndpoint")
+        ?.obj("createCommentEndpoint")
+        ?.text("createCommentParams")
+        ?.takeIf { it.isNotEmpty() }
+}
+
+private fun likeAction(renderer: Json.Obj, endpoint: String): String? {
+    return renderer.obj("actionButtons")
+        ?.obj("commentActionButtonsRenderer")
+        ?.obj("likeButton")
+        ?.obj("toggleButtonRenderer")
+        ?.obj(endpoint)
+        ?.obj("performCommentActionEndpoint")
+        ?.text("action")
+        ?.takeIf { it.isNotEmpty() }
+}
+
+private fun deleteKey(node: Json): String? = when (node) {
+    is Json.Obj -> {
+        if (!containsIcon(node, "DELETE") || firstAction(node) == null) null
+        else node.fields.values.asSequence().mapNotNull { deleteKey(it) }.firstOrNull() ?: firstAction(node)
+    }
+    is Json.Arr -> node.items.asSequence().mapNotNull { deleteKey(it) }.firstOrNull()
+    else -> null
+}
+
+private fun containsIcon(node: Json, icon: String): Boolean = when (node) {
+    is Json.Obj -> node.text("iconType") == icon || node.fields.values.any { containsIcon(it, icon) }
+    is Json.Arr -> node.items.any { containsIcon(it, icon) }
+    else -> false
+}
+
+private fun firstAction(node: Json): String? = when (node) {
+    is Json.Obj -> {
+        val action = node.obj("performCommentActionEndpoint")?.text("action")
+        if (action != null && action.isNotEmpty()) action
+        else node.fields.values.asSequence().mapNotNull { firstAction(it) }.firstOrNull()
+    }
+    is Json.Arr -> node.items.asSequence().mapNotNull { firstAction(it) }.firstOrNull()
+    else -> null
+}
+
+private fun firstNamed(node: Json, name: String): String? = when (node) {
+    is Json.Obj -> {
+        val value = node.text(name)
+        if (value != null && value.isNotEmpty()) value
+        else node.fields.values.asSequence().mapNotNull { firstNamed(it, name) }.firstOrNull()
+    }
+    is Json.Arr -> node.items.asSequence().mapNotNull { firstNamed(it, name) }.firstOrNull()
+    else -> null
 }
 
 private fun join(parts: List<String>): String {

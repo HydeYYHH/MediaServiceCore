@@ -17,6 +17,7 @@ class CommentPageTest {
     """
     private val page = """
         {"continuationContents":{"itemSectionContinuation":{
+          "header":{"commentsHeaderRenderer":{"createRenderer":{"commentSimpleboxRenderer":{"submitButton":{"buttonRenderer":{"serviceEndpoint":{"createCommentEndpoint":{"createCommentParams":"CREATE"}}}}}}}},
           "contents":[{"commentThreadRenderer":{"comment":{"commentRenderer":{
             "commentId":"abc",
             "authorText":{"simpleText":"Ada"},
@@ -27,7 +28,16 @@ class CommentPageTest {
             "authorThumbnail":{"thumbnails":[{"url":"https://yt3.ggpht.com/a"}]},
             "replies":{"commentRepliesRenderer":{"contents":[
               {"continuationItemRenderer":{"continuationEndpoint":{"continuationCommand":{"token":"REPLY"}}}}
-            ]}}
+            ]}},
+            "actionButtons":{"commentActionButtonsRenderer":{"likeButton":{"toggleButtonRenderer":{
+              "defaultServiceEndpoint":{"performCommentActionEndpoint":{"action":"LIKE"}},
+              "toggledServiceEndpoint":{"performCommentActionEndpoint":{"action":"UNLIKE"}}
+            }}}},
+            "actionMenu":{"menuRenderer":{"items":[
+              {"menuServiceItemRenderer":{"icon":{"iconType":"FLAG"},"serviceEndpoint":{"performCommentActionEndpoint":{"action":"REPORT"}}}},
+              {"menuNavigationItemRenderer":{"icon":{"iconType":"DELETE"},"navigationEndpoint":{"confirmDialogEndpoint":{"content":{"confirmDialogRenderer":{"confirmButton":{"buttonRenderer":{"serviceEndpoint":{"performCommentActionEndpoint":{"action":"DELETE"}}}}}}}}}}
+            ]}},
+            "createReplyParams":"REPLY_CREATE"
           }}}}],
           "continuations":[{"nextContinuationData":{"continuation":"NEXT"}}]
         }}}
@@ -53,6 +63,34 @@ class CommentPageTest {
         assertTrue(comment.liked)
         assertEquals("REPLY", comment.replyKey)
         assertEquals("https://yt3.ggpht.com/a", comment.authorPhoto)
+        assertEquals("CREATE", parsed.createKey)
+        assertEquals("LIKE", comment.likeKey)
+        assertEquals("UNLIKE", comment.unlikeKey)
+        assertEquals("DELETE", comment.deleteKey)
+        assertEquals("REPLY_CREATE", comment.replyCreateKey)
+    }
+
+    @Test
+    fun readsALooseCreateKey() {
+        val body = """{"continuationContents":{"itemSectionContinuation":{"contents":[]}},"createCommentParams":"LOOSE"}"""
+        assertEquals("LOOSE", commentPage(body).createKey)
+    }
+
+    @Test
+    fun usesTheWatchCreateKeyWhenThePageOmitsIt() {
+        val opened = """
+            {"createCommentParams":"FROM_WATCH","engagementPanels":[{"engagementPanelSectionListRenderer":{
+              "panelIdentifier":"engagement-panel-comments-section",
+              "content":{"sectionListRenderer":{"contents":[{"itemSectionRenderer":{"contents":[
+                {"continuationItemRenderer":{"continuationEndpoint":{"continuationCommand":{"token":"COMMENT_KEY"}}}}
+              ]}}]}}
+            }}]}
+        """
+        val bare = """{"continuationContents":{"itemSectionContinuation":{"contents":[]}}}"""
+        val parsed = loadComments("dQw4w9WgXcQ", null) { query ->
+            if (query.body.contains("videoId")) Pair(200, opened) else Pair(200, bare)
+        }
+        assertEquals("FROM_WATCH", parsed.createKey)
     }
 
     @Test
