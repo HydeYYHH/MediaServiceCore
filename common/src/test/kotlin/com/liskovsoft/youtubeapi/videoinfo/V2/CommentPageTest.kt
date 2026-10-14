@@ -21,7 +21,15 @@ class CommentPageTest {
           "contents":[{"commentThreadRenderer":{"comment":{"commentRenderer":{
             "commentId":"abc",
             "authorText":{"simpleText":"Ada"},
-            "contentText":{"runs":[{"text":"hello "},{"text":"world"}]},
+            "contentText":{"runs":[
+              {"text":"hello "},{"text":"world "},
+              {"text":"site","navigationEndpoint":{"urlEndpoint":{"url":"/site"}}},
+              {"text":" 1:23","navigationEndpoint":{"commandMetadata":{"webCommandMetadata":{"url":"/watch?v=dQw4w9WgXcQ&t=83s"}},"watchEndpoint":{"videoId":"dQw4w9WgXcQ","startTimeSeconds":83},"browseEndpoint":{"browseId":"UCada"}}},
+              {"emoji":{"emojiId":"smile"}},
+              {"emoji":{"isCustomEmoji":true,"shortcuts":[":cat:"],"image":{"thumbnails":[{"url":"https://yt3.ggpht.com/e"}]}}},
+              {"navigationEndpoint":{"watchEndpoint":{"videoId":"zero","startTimeSeconds":0}}},
+              {}
+            ]},
             "publishedTimeText":{"simpleText":"2 days ago"},
             "voteCount":{"simpleText":"12"},
             "isLiked":true,
@@ -29,10 +37,17 @@ class CommentPageTest {
             "replies":{"commentRepliesRenderer":{"contents":[
               {"continuationItemRenderer":{"continuationEndpoint":{"continuationCommand":{"token":"REPLY"}}}}
             ]}},
-            "actionButtons":{"commentActionButtonsRenderer":{"likeButton":{"toggleButtonRenderer":{
-              "defaultServiceEndpoint":{"performCommentActionEndpoint":{"action":"LIKE"}},
-              "toggledServiceEndpoint":{"performCommentActionEndpoint":{"action":"UNLIKE"}}
-            }}}},
+            "actionButtons":{"commentActionButtonsRenderer":{
+              "likeButton":{"toggleButtonRenderer":{
+                "defaultServiceEndpoint":{"performCommentActionEndpoint":{"action":"LIKE"}},
+                "toggledServiceEndpoint":{"performCommentActionEndpoint":{"action":"UNLIKE"}}
+              }},
+              "dislikeButton":{"toggleButtonRenderer":{
+                "isToggled":true,
+                "defaultServiceEndpoint":{"performCommentActionEndpoint":{"action":"DISLIKE"}},
+                "toggledServiceEndpoint":{"performCommentActionEndpoint":{"action":"UNDISLIKE"}}
+              }}
+            }},
             "actionMenu":{"menuRenderer":{"items":[
               {"menuServiceItemRenderer":{"icon":{"iconType":"FLAG"},"serviceEndpoint":{"performCommentActionEndpoint":{"action":"REPORT"}}}},
               {"menuNavigationItemRenderer":{"icon":{"iconType":"DELETE"},"navigationEndpoint":{"confirmDialogEndpoint":{"content":{"confirmDialogRenderer":{"confirmButton":{"buttonRenderer":{"serviceEndpoint":{"performCommentActionEndpoint":{"action":"DELETE"}}}}}}}}}}
@@ -57,7 +72,7 @@ class CommentPageTest {
         val comment = parsed.comments[0]
         assertEquals("abc", comment.id)
         assertEquals("Ada", comment.author)
-        assertEquals("hello world", comment.text)
+        assertEquals("hello world site 1:23smile:cat:", comment.text)
         assertEquals("2 days ago", comment.published)
         assertEquals("12", comment.likeCount)
         assertTrue(comment.liked)
@@ -68,6 +83,21 @@ class CommentPageTest {
         assertEquals("UNLIKE", comment.unlikeKey)
         assertEquals("DELETE", comment.deleteKey)
         assertEquals("REPLY_CREATE", comment.replyCreateKey)
+        assertEquals(7, comment.runs.size)
+        assertEquals("https://www.youtube.com/site", comment.runs[2].url)
+        assertEquals("https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=83s", comment.runs[3].url)
+        assertEquals("dQw4w9WgXcQ", comment.runs[3].videoId)
+        assertEquals(83, comment.runs[3].seconds)
+        assertEquals("UCada", comment.runs[3].channelId)
+        assertEquals("smile", comment.runs[4].text)
+        assertNull(comment.runs[4].emoji)
+        assertEquals(":cat:", comment.runs[5].text)
+        assertEquals("https://yt3.ggpht.com/e", comment.runs[5].emoji)
+        assertEquals("zero", comment.runs[6].videoId)
+        assertEquals(0, comment.runs[6].seconds)
+        assertTrue(comment.disliked)
+        assertEquals("DISLIKE", comment.dislikeKey)
+        assertEquals("UNDISLIKE", comment.undislikeKey)
     }
 
     @Test
@@ -108,7 +138,7 @@ class CommentPageTest {
         assertTrue(bodies[0].contains("\"videoId\":\"dQw4w9WgXcQ\""))
         assertFalse(bodies[0].contains("continuation"))
         assertTrue(bodies[1].contains("\"continuation\":\"COMMENT_KEY\""))
-        assertEquals("hello world", parsed.comments[0].text)
+        assertEquals("hello world site 1:23smile:cat:", parsed.comments[0].text)
         assertEquals("NEXT", parsed.nextKey)
     }
 

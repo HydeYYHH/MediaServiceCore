@@ -64,6 +64,25 @@ class CommentWriteTest {
     }
 
     @Test
+    fun dislikesWithTheDislikeKey() {
+        val ok = dislikeComment(comment(false), null) { query ->
+            assertTrue(query.url.contains("/comment/perform_comment_action"))
+            assertTrue(query.body.contains("\"actions\":[\"DISLIKE\"]"))
+            Pair(200, "")
+        }
+        assertTrue(ok)
+    }
+
+    @Test
+    fun dislikedCommentSendsTheUndislikeKey() {
+        val ok = dislikeComment(comment(false, true), null) { query ->
+            assertTrue(query.body.contains("\"actions\":[\"UNDISLIKE\"]"))
+            Pair(200, "")
+        }
+        assertTrue(ok)
+    }
+
+    @Test
     fun emptyKeySkipsPost() {
         var called = false
         val ok = deleteComment(comment(false).copy(deleteKey = null), null) {
@@ -72,6 +91,13 @@ class CommentWriteTest {
         }
         assertFalse(called)
         assertFalse(ok)
+        called = false
+        val missingDislike = dislikeComment(comment(false).copy(dislikeKey = null), null) {
+            called = true
+            Pair(200, "")
+        }
+        assertFalse(called)
+        assertFalse(missingDislike)
     }
 
     @Test
@@ -92,7 +118,7 @@ class CommentWriteTest {
         assertFalse(missing)
     }
 
-    private fun comment(liked: Boolean) = Comment(
+    private fun comment(liked: Boolean, disliked: Boolean = false) = Comment(
         "abc",
         "Ada",
         "hello",
@@ -104,6 +130,10 @@ class CommentWriteTest {
         "LIKE",
         "UNLIKE",
         "DELETE",
-        "REPLY_CREATE"
+        "REPLY_CREATE",
+        emptyList(),
+        "DISLIKE",
+        "UNDISLIKE",
+        disliked
     )
 }

@@ -2,6 +2,15 @@ package com.liskovsoft.youtubeapi.videoinfo.V2
 
 private const val NEXT_URL = "https://www.youtube.com/youtubei/v1/next?prettyPrint=false"
 
+data class CommentRun(
+    val text: String,
+    val url: String?,
+    val videoId: String?,
+    val seconds: Int?,
+    val channelId: String?,
+    val emoji: String?
+)
+
 data class Comment(
     val id: String?,
     val author: String?,
@@ -14,7 +23,11 @@ data class Comment(
     val likeKey: String?,
     val unlikeKey: String?,
     val deleteKey: String?,
-    val replyCreateKey: String?
+    val replyCreateKey: String?,
+    val runs: List<CommentRun>,
+    val dislikeKey: String?,
+    val undislikeKey: String?,
+    val disliked: Boolean
 )
 
 data class CommentPage(val comments: List<Comment>, val nextKey: String?, val createKey: String?)
@@ -49,19 +62,24 @@ fun commentPage(body: String): CommentPage {
                 ?.obj("commentThreadRenderer")
                 ?.obj("comment")
                 ?.obj("commentRenderer") ?: continue
+            val runs = contentRuns(renderer.obj("contentText"))
             comments.add(Comment(
                 renderer.text("commentId")?.takeIf { it.isNotEmpty() },
                 displayText(renderer.obj("authorText")),
-                displayText(renderer.obj("contentText")),
+                joinedText(runs),
                 displayText(renderer.obj("publishedTimeText")),
                 displayText(renderer.obj("voteCount")),
                 renderer.bool("isLiked") == true,
                 renderer.obj("replies")?.let { firstToken(it) },
                 firstThumbnail(renderer.obj("authorThumbnail")),
-                likeAction(renderer, "defaultServiceEndpoint"),
-                likeAction(renderer, "toggledServiceEndpoint"),
+                buttonAction(renderer, "likeButton", "defaultServiceEndpoint"),
+                buttonAction(renderer, "likeButton", "toggledServiceEndpoint"),
                 renderer.obj("actionMenu")?.let { deleteKey(it) },
-                firstNamed(renderer, "createReplyParams")
+                firstNamed(renderer, "createReplyParams"),
+                runs,
+                buttonAction(renderer, "dislikeButton", "defaultServiceEndpoint"),
+                buttonAction(renderer, "dislikeButton", "toggledServiceEndpoint"),
+                disliked(renderer)
             ))
         }
     }
@@ -122,6 +140,71 @@ private fun sectionContinuation(section: Json.Obj): String? {
     return firstToken(Json.Arr(continuations.items))
 }
 
+private fun contentRuns(node: Json.Obj?): List<CommentRun> {
+    if (node == null) return emptyList()
+    val simple = node.text("simpleText")
+    if (simple != null && simple.isNotEmpty()) {
+        return listOf(CommentRun(simple, null, null, null, null, null))
+    }
+    val items = node.fields["runs"] as? Json.Arr ?: return emptyList()
+    val runs = ArrayList<CommentRun>()
+    for (item in items.items) {
+        val run = item as? Json.Obj ?: continue
+        val built = commentRun(run)
+        if (built != null) runs.add(built)
+    }
+    return runs
+}
+
+private fun commentRun(run: Json.Obj): CommentRun? {
+    val emojiNode = run.obj("emoji")
+    val text = run.text("text")?.takeIf { it.isNotEmpty() } ?: emojiLabel(emojiNode)
+    val endpoint = run.obj("navigationEndpoint")
+    val url = endpointUrl(endpoint)
+    val watch = endpoint?.obj("watchEndpoint")
+    val videoId = watch?.text("videoId")?.takeIf { it.isNotEmpty() }
+    val seconds = if (watch == null) null else wholeNumber(watch, "startTimeSeconds")
+    val channelId = endpoint?.obj("browseEndpoint")?.text("browseId")?.takeIf { it.isNotEmpty() }
+    val emoji = emojiNode?.obj("image")?.let { firstThumbnail(it) }
+    if (text == null && url == null && videoId == null && channelId == null && emoji == null) return null
+    return CommentRun(text ?: "", url, videoId, seconds, channelId, emoji)
+}
+
+private fun emojiLabel(emoji: Json.Obj?): String? {
+    if (emoji == null) return null
+    if (emoji.bool("isCustomEmoji") == true) {
+        val shortcuts = emoji.fields["shortcuts"] as? Json.Arr ?: return null
+        for (item in shortcuts.items) {
+            val name = (item as? Json.Str)?.value
+            if (name != null && name.isNotEmpty()) return name
+        }
+        return null
+    }
+    return emoji.text("emojiId")?.takeIf { it.isNotEmpty() }
+}
+
+private fun endpointUrl(endpoint: Json.Obj?): String? {
+    if (endpoint == null) return null
+    val raw = endpoint.obj("urlEndpoint")?.text("url")?.takeIf { it.isNotEmpty() }
+        ?: endpoint.obj("commandMetadata")?.obj("webCommandMetadata")?.text("url")?.takeIf { it.isNotEmpty() }
+        ?: return null
+    return if (raw.startsWith("/")) "https://www.youtube.com$raw" else raw
+}
+
+private fun wholeNumber(node: Json.Obj, name: String): Int? {
+    val text = (node.fields[name] as? Json.Num)?.text ?: return null
+    val digits = if (text.startsWith("-")) text.substring(1) else text
+    if (digits.isEmpty() || digits.any { it !in '0'..'9' }) return null
+    return text.toIntOrNull()
+}
+
+private fun joinedText(runs: List<CommentRun>): String? {
+    if (runs.isEmpty()) return null
+    val out = StringBuilder()
+    for (run in runs) out.append(run.text)
+    return if (out.isEmpty()) null else out.toString()
+}
+
 private fun displayText(node: Json.Obj?): String? {
     if (node == null) return null
     val simple = node.text("simpleText")
@@ -157,15 +240,23 @@ private fun headerCreateKey(section: Json.Obj): String? {
         ?.takeIf { it.isNotEmpty() }
 }
 
-private fun likeAction(renderer: Json.Obj, endpoint: String): String? {
+private fun buttonAction(renderer: Json.Obj, button: String, endpoint: String): String? {
     return renderer.obj("actionButtons")
         ?.obj("commentActionButtonsRenderer")
-        ?.obj("likeButton")
+        ?.obj(button)
         ?.obj("toggleButtonRenderer")
         ?.obj(endpoint)
         ?.obj("performCommentActionEndpoint")
         ?.text("action")
         ?.takeIf { it.isNotEmpty() }
+}
+
+private fun disliked(renderer: Json.Obj): Boolean {
+    return renderer.obj("actionButtons")
+        ?.obj("commentActionButtonsRenderer")
+        ?.obj("dislikeButton")
+        ?.obj("toggleButtonRenderer")
+        ?.bool("isToggled") == true
 }
 
 private fun deleteKey(node: Json): String? = when (node) {

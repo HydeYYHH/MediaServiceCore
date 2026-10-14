@@ -59,6 +59,15 @@ fun likeComment(
     return sendComment(commentActionQuery(key, visitor), post)
 }
 
+fun dislikeComment(
+    comment: Comment,
+    visitor: String?,
+    post: (PlayerQuery) -> Pair<Int, String>
+): Boolean {
+    val key = if (comment.disliked) comment.undislikeKey else comment.dislikeKey
+    return sendComment(commentActionQuery(key, visitor), post)
+}
+
 private fun textQuery(
     url: String,
     paramsField: String,
