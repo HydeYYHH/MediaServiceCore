@@ -86,4 +86,44 @@ class LoungeReportTest {
         assertFalse(called)
         assertFalse(sent)
     }
+
+    @Test
+    fun reportsSubtitles() {
+        val query = subtitleQuery("Living Room", "device-1", "tok", "sid-1", "gs-1", "a.en", "en", 0)
+        assertTrue(query.body.contains("req0__sc=onSubtitlesTrackChanged"))
+        assertTrue(query.body.contains("req0_vss_id=a.en"))
+        assertTrue(query.body.contains("req0_languageCode=en"))
+        assertTrue(query.body.contains("req0_sourceLanguageCode=en"))
+        var called = false
+        val sent = postSubtitle("Living Room", "device-1", "tok", "sid-1", "gs-1", " \n", "en", 0) { posted ->
+            called = true
+            assertTrue(posted.body.contains("onSubtitlesTrackChanged"))
+            assertFalse(posted.body.contains("vss_id"))
+            assertFalse(posted.body.contains("languageCode"))
+            Pair(200, "")
+        }
+        assertTrue(called)
+        assertTrue(sent)
+    }
+
+    @Test
+    fun reportsPreviousNext() {
+        val query = previousNextQuery("Living Room", "device-1", "tok", "sid-1", "gs-1", 0)
+        assertTrue(query.body.contains("req0__sc=onHasPreviousNextChanged"))
+        assertTrue(query.body.contains("req0_hasPrevious=false"))
+        assertTrue(query.body.contains("req0_hasNext=false"))
+        assertTrue(query.body.contains("req0_loadedTime=0"))
+        assertFalse(query.body.contains("currentTime"))
+    }
+
+    @Test
+    fun blankSessionSkipsSubtitle() {
+        var called = false
+        val sent = postSubtitle("Living Room", "device-1", "tok", " \n", "gs-1", "a.en", "en", 0) {
+            called = true
+            Pair(200, "")
+        }
+        assertFalse(called)
+        assertFalse(sent)
+    }
 }

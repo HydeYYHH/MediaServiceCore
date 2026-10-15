@@ -91,6 +91,53 @@ fun volumeQuery(
     return formQuery(url, fields)
 }
 
+fun subtitleQuery(
+    screenName: String?,
+    deviceId: String?,
+    loungeToken: String?,
+    sessionId: String?,
+    gSessionId: String?,
+    vssId: String?,
+    languageCode: String?,
+    ofs: Int
+): PlayerQuery {
+    val url = reportUrl(screenName, deviceId, loungeToken, sessionId, gSessionId)
+    if (url.isEmpty()) return PlayerQuery("", emptyMap(), "")
+    val fields = ArrayList<Pair<String, String>>()
+    fields.add(Pair("count", "1"))
+    fields.add(Pair("ofs", ofs.toString()))
+    fields.add(Pair("req0__sc", "onSubtitlesTrackChanged"))
+    val track = vssId?.trim()
+    if (!track.isNullOrEmpty()) {
+        fields.add(Pair("req0_vss_id", track))
+        if (!languageCode.isNullOrEmpty()) {
+            fields.add(Pair("req0_languageCode", languageCode))
+            fields.add(Pair("req0_sourceLanguageCode", languageCode))
+        }
+    }
+    return formQuery(url, fields)
+}
+
+fun previousNextQuery(
+    screenName: String?,
+    deviceId: String?,
+    loungeToken: String?,
+    sessionId: String?,
+    gSessionId: String?,
+    ofs: Int
+): PlayerQuery {
+    val url = reportUrl(screenName, deviceId, loungeToken, sessionId, gSessionId)
+    if (url.isEmpty()) return PlayerQuery("", emptyMap(), "")
+    val fields = ArrayList<Pair<String, String>>()
+    fields.add(Pair("count", "1"))
+    fields.add(Pair("ofs", ofs.toString()))
+    fields.add(Pair("req0__sc", "onHasPreviousNextChanged"))
+    fields.add(Pair("req0_hasPrevious", "false"))
+    fields.add(Pair("req0_hasNext", "false"))
+    addTime(fields, -1, -1)
+    return formQuery(url, fields)
+}
+
 fun postNowPlaying(
     screenName: String?,
     deviceId: String?,
@@ -160,6 +207,41 @@ fun postVolume(
     post: (PlayerQuery) -> Pair<Int, String>
 ): Boolean {
     return posted(volumeQuery(screenName, deviceId, loungeToken, sessionId, gSessionId, volume, ofs), post)
+}
+
+fun postSubtitle(
+    screenName: String?,
+    deviceId: String?,
+    loungeToken: String?,
+    sessionId: String?,
+    gSessionId: String?,
+    vssId: String?,
+    languageCode: String?,
+    ofs: Int,
+    post: (PlayerQuery) -> Pair<Int, String>
+): Boolean {
+    return posted(subtitleQuery(
+        screenName,
+        deviceId,
+        loungeToken,
+        sessionId,
+        gSessionId,
+        vssId,
+        languageCode,
+        ofs
+    ), post)
+}
+
+fun postPreviousNext(
+    screenName: String?,
+    deviceId: String?,
+    loungeToken: String?,
+    sessionId: String?,
+    gSessionId: String?,
+    ofs: Int,
+    post: (PlayerQuery) -> Pair<Int, String>
+): Boolean {
+    return posted(previousNextQuery(screenName, deviceId, loungeToken, sessionId, gSessionId, ofs), post)
 }
 
 private fun posted(query: PlayerQuery, post: (PlayerQuery) -> Pair<Int, String>): Boolean {
