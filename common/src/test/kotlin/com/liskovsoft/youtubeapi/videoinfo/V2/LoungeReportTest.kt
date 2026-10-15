@@ -126,4 +126,67 @@ class LoungeReportTest {
         assertFalse(called)
         assertFalse(sent)
     }
+
+    @Test
+    fun reportsQuality() {
+        val query = qualityQuery(
+            "Living Room",
+            "device-1",
+            "tok",
+            "sid-1",
+            "gs-1",
+            "dQw4w9WgXcQ",
+            "360",
+            listOf("720p", "1080P"),
+            0
+        )
+        assertTrue(query.body.contains("req0__sc=onVideoQualityChanged"))
+        assertTrue(query.body.contains("req0_qualityLevel=360"))
+        assertTrue(query.body.contains("req0_availableQualityLevels=720%2C1080"))
+        assertFalse(query.body.contains("loadedTime"))
+    }
+
+    @Test
+    fun reportsDiscovery() {
+        val query = discoveryQuery(
+            "Living Room",
+            "device-1",
+            "tok",
+            "sid-1",
+            "gs-1",
+            "d6e51266-0538-44a8-8cc7-0687e27cb89c",
+            0
+        )
+        assertTrue(query.body.contains("req0__sc=setDiscoveryDeviceId"))
+        assertTrue(query.body.contains("req0_discoveryDeviceId=d6e51266-0538-44a8-8cc7-0687e27cb89c"))
+        assertTrue(query.body.contains("req0_loungeDeviceId=d6e51266-0538-44a8-8cc7-0687e27cb89c"))
+        var called = false
+        val sent = postDiscovery("Living Room", "device-1", "tok", "sid-1", "gs-1", " \n", 0) {
+            called = true
+            Pair(200, "")
+        }
+        assertFalse(called)
+        assertFalse(sent)
+    }
+
+    @Test
+    fun blankSessionSkipsQuality() {
+        var called = false
+        val sent = postQuality(
+            "Living Room",
+            "device-1",
+            "tok",
+            " \n",
+            "gs-1",
+            "dQw4w9WgXcQ",
+            "360",
+            listOf("720p"),
+            0
+        ) {
+            called = true
+            Pair(200, "")
+        }
+        assertFalse(called)
+        assertFalse(sent)
+    }
 }

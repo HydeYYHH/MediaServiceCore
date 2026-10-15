@@ -138,6 +138,51 @@ fun previousNextQuery(
     return formQuery(url, fields)
 }
 
+fun qualityQuery(
+    screenName: String?,
+    deviceId: String?,
+    loungeToken: String?,
+    sessionId: String?,
+    gSessionId: String?,
+    videoId: String?,
+    quality: String?,
+    levels: List<String>?,
+    ofs: Int
+): PlayerQuery {
+    val url = reportUrl(screenName, deviceId, loungeToken, sessionId, gSessionId)
+    if (url.isEmpty()) return PlayerQuery("", emptyMap(), "")
+    val fields = ArrayList<Pair<String, String>>()
+    fields.add(Pair("count", "1"))
+    fields.add(Pair("ofs", ofs.toString()))
+    fields.add(Pair("req0__sc", "onVideoQualityChanged"))
+    addText(fields, "req0_videoId", videoId)
+    addText(fields, "req0_qualityLevel", quality)
+    addText(fields, "req0_availableQualityLevels", qualityLevels(levels))
+    return formQuery(url, fields)
+}
+
+fun discoveryQuery(
+    screenName: String?,
+    deviceId: String?,
+    loungeToken: String?,
+    sessionId: String?,
+    gSessionId: String?,
+    discoveryId: String?,
+    ofs: Int
+): PlayerQuery {
+    val id = discoveryId?.trim()
+    if (id.isNullOrEmpty()) return PlayerQuery("", emptyMap(), "")
+    val url = reportUrl(screenName, deviceId, loungeToken, sessionId, gSessionId)
+    if (url.isEmpty()) return PlayerQuery("", emptyMap(), "")
+    val fields = ArrayList<Pair<String, String>>()
+    fields.add(Pair("count", "1"))
+    fields.add(Pair("ofs", ofs.toString()))
+    fields.add(Pair("req0__sc", "setDiscoveryDeviceId"))
+    fields.add(Pair("req0_discoveryDeviceId", id))
+    fields.add(Pair("req0_loungeDeviceId", id))
+    return formQuery(url, fields)
+}
+
 fun postNowPlaying(
     screenName: String?,
     deviceId: String?,
@@ -244,6 +289,52 @@ fun postPreviousNext(
     return posted(previousNextQuery(screenName, deviceId, loungeToken, sessionId, gSessionId, ofs), post)
 }
 
+fun postQuality(
+    screenName: String?,
+    deviceId: String?,
+    loungeToken: String?,
+    sessionId: String?,
+    gSessionId: String?,
+    videoId: String?,
+    quality: String?,
+    levels: List<String>?,
+    ofs: Int,
+    post: (PlayerQuery) -> Pair<Int, String>
+): Boolean {
+    return posted(qualityQuery(
+        screenName,
+        deviceId,
+        loungeToken,
+        sessionId,
+        gSessionId,
+        videoId,
+        quality,
+        levels,
+        ofs
+    ), post)
+}
+
+fun postDiscovery(
+    screenName: String?,
+    deviceId: String?,
+    loungeToken: String?,
+    sessionId: String?,
+    gSessionId: String?,
+    discoveryId: String?,
+    ofs: Int,
+    post: (PlayerQuery) -> Pair<Int, String>
+): Boolean {
+    return posted(discoveryQuery(
+        screenName,
+        deviceId,
+        loungeToken,
+        sessionId,
+        gSessionId,
+        discoveryId,
+        ofs
+    ), post)
+}
+
 private fun posted(query: PlayerQuery, post: (PlayerQuery) -> Pair<Int, String>): Boolean {
     if (query.url.isEmpty()) return false
     val http = try {
@@ -284,6 +375,18 @@ private fun addTime(fields: MutableList<Pair<String, String>>, positionMs: Long,
     }
     fields.add(Pair("req0_loadedTime", "0"))
     fields.add(Pair("req0_seekableStartTime", "0"))
+}
+
+private fun qualityLevels(levels: List<String>?): String? {
+    if (levels == null) return null
+    val out = StringBuilder()
+    for (level in levels) {
+        val text = level.toLowerCase().replace("p", "").trim()
+        if (text.isEmpty()) continue
+        if (out.length > 0) out.append(',')
+        out.append(text)
+    }
+    return if (out.length == 0) null else out.toString()
 }
 
 private fun addText(fields: MutableList<Pair<String, String>>, name: String, value: String?) {
