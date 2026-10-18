@@ -2,6 +2,11 @@ package com.liskovsoft.youtubeapi.videoinfo.V2
 import org.junit.Assert.*
 import org.junit.Test
 class ChatPageTest {
+    @Test fun preservesMixedMessageAndDeletionOrder() {
+        val p=chatPage("""{"actions":[{"liveChatPaidMessageRenderer":{"id":"paid"}},{"markChatItemAsDeletedAction":{"targetItemId":"paid"}},{"liveChatTextMessageRenderer":{"id":"text"}}]}""")
+        assertEquals(listOf("paid","text"),p.messages.map {it.id})
+        assertTrue(p.actions[1] is ChatAction.Remove)
+    }
     @Test fun readsMessagesRemovalsAndTheServersDelay() {
         val page=chatPage("""{"continuationContents":{"liveChatContinuation":{"actions":[{"addChatItemAction":{"item":{"liveChatTextMessageRenderer":{"id":"m","message":{"runs":[{"text":"Hi"}]},"timestampUsec":"123"}}}},{"markChatItemAsDeletedAction":{"targetItemId":"old"}}],"continuations":[{"timedContinuationData":{"continuation":"next","timeoutMs":2500}}]}}}""")
         assertEquals("Hi",page.messages.single().text);assertEquals("old",page.removals.single().messageId)
