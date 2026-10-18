@@ -158,3 +158,13 @@ internal fun Json.Obj.display(name: String): String? = obj(name)?.let { text ->
 }
 internal fun Json.Obj.thumbnail(name: String): String? =
     obj(name)?.arr("thumbnails")?.mapNotNull { (it as? Json.Obj)?.text("url") }?.lastOrNull()
+
+internal fun Json.encode(): String = when (this) {
+    Json.Null -> "null"
+    is Json.Bool -> value.toString()
+    is Json.Str -> jsonQuote(value)
+    is Json.Num -> text
+    is Json.Arr -> items.joinToString(",", "[", "]") { it.encode() }
+    is Json.Obj -> fields.entries.joinToString(",", "{", "}") { jsonQuote(it.key) + ":" + it.value.encode() }
+}
+internal fun payload(vararg fields: Pair<String, String?>) = fields.filter { it.second != null }.joinToString(",") { jsonQuote(it.first) + ":" + jsonQuote(it.second!!) }
