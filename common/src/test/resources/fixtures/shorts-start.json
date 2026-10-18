@@ -1,0 +1,19 @@
+{
+  "_source": "upstream@7c2451ea:shorts/reel_item_start_2023.04.28.json",
+  "replacementEndpoint": {
+    "reelWatchEndpoint": {
+      "videoId": "-wpLMDjkkzo",
+      "thumbnail": {
+        "thumbnails": [
+          {
+            "url": "https://i.ytimg.com/vi/-wpLMDjkkzo/frame0.jpg",
+            "width": 1080,
+            "height": 1920
+          }
+        ],
+        "isOriginalAspectRatio": true
+      }
+    }
+  },
+  "sequenceContinuation": "fixture-sequence"
+}

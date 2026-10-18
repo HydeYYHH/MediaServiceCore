@@ -1,0 +1,40 @@
+{
+  "_source": "upstream@7c2451ea:shorts/reel_item_continuation_2023.04.28.json",
+  "entries": [
+    {
+      "command": {
+        "reelWatchEndpoint": {
+          "videoId": "FkYZX48J1aM",
+          "thumbnail": {
+            "thumbnails": [
+              {
+                "url": "https://i.ytimg.com/vi/FkYZX48J1aM/frame0.jpg",
+                "width": 1080,
+                "height": 1920
+              }
+            ],
+            "isOriginalAspectRatio": true
+          }
+        }
+      }
+    },
+    {
+      "command": {
+        "reelWatchEndpoint": {
+          "videoId": "Tp11alSU26A",
+          "thumbnail": {
+            "thumbnails": [
+              {
+                "url": "https://i.ytimg.com/vi/Tp11alSU26A/frame0.jpg",
+                "width": 720,
+                "height": 1280
+              }
+            ],
+            "isOriginalAspectRatio": true
+          }
+        }
+      }
+    }
+  ],
+  "continuation": "fixture-sequence"
+}
