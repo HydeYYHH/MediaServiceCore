@@ -1,8 +1,8 @@
 package com.liskovsoft.youtubeapi.videoinfo.V2
 
-data class PlayerSource(val videoId: String, val client: PlayerClient, val context: RequestContext, val urls: Set<String>, val sequence: Long,
+data class PlayerSource @JvmOverloads constructor(val videoId: String, val client: PlayerClient, val context: RequestContext, val urls: Set<String>, val sequence: Long,
     val preference: PlaybackPreference = PlaybackPreference(), val sessionId: String? = null)
-class PlaybackSession(private val http: HttpClient = JvmHttpClient(), private val script: PlayerScript? = null,
+class PlaybackSession @JvmOverloads constructor(private val http: HttpClient = JvmHttpClient(), private val script: PlayerScript? = null,
     private val solver: PlayerSolver? = null, private val tokens: PlayerTokenProvider? = null,
     private val now: () -> Long = System::currentTimeMillis, private val scripts: PlayerScriptProvider? = null) {
     private val lock = PlaybackLock()

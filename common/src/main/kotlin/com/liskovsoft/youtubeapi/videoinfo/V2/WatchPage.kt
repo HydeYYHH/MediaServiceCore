@@ -25,7 +25,7 @@ fun readStoryboard(spec: String?): Storyboard? {
     }
     return if (levels.isEmpty()) null else Storyboard(parts.first(), levels)
 }
-data class WatchPage(val videoId: String?, val title: String?, val description: String?, val author: String?, val channelId: String?,
+data class WatchPage @JvmOverloads constructor(val videoId: String?, val title: String?, val description: String?, val author: String?, val channelId: String?,
     val chapters: List<Chapter>, val related: List<MediaItem>, val nextKey: String?, val commentsKey: String?, val chatKey: String?, val storyboard: Storyboard?,
     val queue: WatchQueue? = null, val resumeSeconds: Long? = null)
 fun watchPage(body: String, videoId: String? = null): WatchPage {
@@ -46,6 +46,7 @@ fun watchPage(body: String, videoId: String? = null): WatchPage {
         recommendations?.let(::contentItems).orEmpty(), recommendations?.let(::pageKey), commentKey(body), liveChat?.let(::pageKey),
         readStoryboard(root?.objects("playerStoryboardSpecRenderer")?.firstOrNull()?.text("spec")), queue, root?.let { resumeSeconds(it, queue) })
 }
+@JvmOverloads
 fun loadWatch(videoId: String?, context: RequestContext = RequestContext(), continuation: String? = null,
     http: HttpClient = JvmHttpClient(), playlistId: String? = null, index: Int? = null, params: String? = null): ReadResult<WatchPage> {
     if (continuation == null && (videoId == null || !videoIdAccepted(videoId))) return ReadResult(error = RequestError(RequestFailure.INVALID, "invalid_video_id"))

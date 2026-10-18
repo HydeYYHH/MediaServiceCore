@@ -1,7 +1,7 @@
 package com.liskovsoft.youtubeapi.videoinfo.V2
 
 data class BrowseTab(val title: String?, val browseId: String?, val params: String?, val selected: Boolean)
-data class BrowsePage(val items: List<MediaItem>, val groups: List<MediaGroup>, val tabs: List<BrowseTab>, val nextKey: String?,
+data class BrowsePage @JvmOverloads constructor(val items: List<MediaItem>, val groups: List<MediaGroup>, val tabs: List<BrowseTab>, val nextKey: String?,
     val messages: List<String> = emptyList(), val actions: List<PageAction> = emptyList())
 fun browsePage(body: String): BrowsePage {
     val root = jsonObject(body) ?: return BrowsePage(emptyList(), emptyList(), emptyList(), null)

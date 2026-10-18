@@ -8,6 +8,7 @@ data class PlayerTokenRequest(val client: PlayerClient, val videoId: String, val
 data class PlayerToken(val value: String, val expiresAtMs: Long) { override fun toString() = "PlayerToken(expiresAtMs=$expiresAtMs)" }
 interface PlayerTokenProvider { fun token(request: PlayerTokenRequest): PlayerToken? }
 
+@JvmOverloads
 fun loadPlayer(videoId: String, context: RequestContext, http: HttpClient = JvmHttpClient(),
     script: PlayerScript? = null, solver: PlayerSolver? = null, tokens: PlayerTokenProvider? = null,
     queues: PlayerClientQueues = PlayerClientQueues(), excluded: Set<PlayerClient> = emptySet(),

@@ -2,7 +2,7 @@ package com.liskovsoft.youtubeapi.videoinfo.V2
 
 enum class VideoVote(val endpoint: String) { LIKE("like/like"), UNLIKE("like/removelike"), DISLIKE("like/dislike"), UNDISLIKE("like/removedislike") }
 enum class ActionState { CONFIRMED, UNCONFIRMED }
-data class ActionReply(val status: String?, val body: String, val state: ActionState = ActionState.UNCONFIRMED) {
+data class ActionReply @JvmOverloads constructor(val status: String?, val body: String, val state: ActionState = ActionState.UNCONFIRMED) {
     val confirmed: Boolean get() = state == ActionState.CONFIRMED
     override fun toString() = "ActionReply(status=$status, state=$state)"
 }
