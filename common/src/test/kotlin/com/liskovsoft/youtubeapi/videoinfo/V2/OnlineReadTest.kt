@@ -5,6 +5,13 @@ import org.junit.Test
 
 /** Opt-in public reads. No credentials, account mutation, or media-playback claim. */
 class OnlineReadTest {
+    @Test fun playerScriptRead() {
+        assumeTrue(java.lang.Boolean.getBoolean("msc.online"))
+        val result = JvmPlayerScripts().script("jNQXAC9IVRw", RequestContext(), false)
+        assertTrue(result.error.toString(), result.ok)
+        assertFalse(result.value!!.source.isBlank())
+        assertNotNull(signatureTimestamp(result.value!!.source))
+    }
     @Test fun youtubeSearch() {
         assumeTrue(java.lang.Boolean.getBoolean("msc.online"))
         val result=loadSearch("Kotlin programming",http=JvmHttpClient())

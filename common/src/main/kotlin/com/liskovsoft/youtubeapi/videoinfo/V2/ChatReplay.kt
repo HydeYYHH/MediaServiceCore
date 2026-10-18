@@ -2,6 +2,8 @@ package com.liskovsoft.youtubeapi.videoinfo.V2
 
 data class ChatEvent(val offsetMs: Long?, val action: ChatAction)
 
+// YoutubeLiveChatFD.real_download / parse_actions_replay, yt-dlp@897341241f2bfb2439fe0367f4c7c9ccd29a3828.
+
 fun loadChatReplay(continuation: String, positionMs: Long = 0, context: RequestContext = RequestContext(),
     http: HttpClient = JvmHttpClient()): ReadResult<ChatPage> {
     if (continuation.isBlank() || positionMs < 0) return ReadResult(error = RequestError(RequestFailure.INVALID, "invalid_chat_replay"))
