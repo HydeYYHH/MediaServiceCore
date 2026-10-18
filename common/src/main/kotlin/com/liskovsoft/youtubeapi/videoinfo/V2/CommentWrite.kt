@@ -27,7 +27,9 @@ fun sendComment(query: PlayerQuery, post: (PlayerQuery) -> Pair<Int, String>): B
     } catch (failure: Exception) {
         return false
     }
-    return http.first == 200
+    if (http.first != 200) return false
+    if (http.second.isBlank()) return true
+    return jsonObject(http.second)?.let { actionReply(it).ok } == true
 }
 
 fun createComment(

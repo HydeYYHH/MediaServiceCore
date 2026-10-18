@@ -4,6 +4,8 @@ enum class VideoVote(val endpoint: String) { LIKE("like/like"), UNLIKE("like/rem
 data class ActionReply(val status: String?, val body: String) { override fun toString() = "ActionReply(status=$status)" }
 internal fun actionReply(root: Json.Obj): ReadResult<ActionReply> {
     val status = root.text("status")
+    if (root.fields.containsKey("error") || root.arr("actionResults").any { (it as? Json.Obj)?.text("status") in listOf("STATUS_FAILED", "FAILED", "ERROR") })
+        return ReadResult(error = RequestError(RequestFailure.HTTP, "action_failed"))
     if (root.bool("success") == false || status in listOf("ERROR", "FAILED", "STATUS_FAILED", "STATUS_ERROR"))
         return ReadResult(error = RequestError(RequestFailure.HTTP, status ?: "action_failed"))
     return ReadResult(ActionReply(status, root.encode()))
