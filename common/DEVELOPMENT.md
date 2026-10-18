@@ -78,7 +78,7 @@
 - 观看记录与进度：[TrackingApi.java](https://github.com/yuliskov/MediaServiceCore/blob/7c2451ea9aaff623d53ef1fceaf863a9cfe16cf5/youtubeapi/src/main/java/com/liskovsoft/youtubeapi/track/TrackingApi.java)。
 - 片段：[SponsorBlock API](https://wiki.sponsor.ajay.app/w/API_Docs)；品牌与缩略图：[DeArrow API](https://wiki.sponsor.ajay.app/w/API_Docs/DeArrow)；计数：[RYD 文档](https://returnyoutubedislike.com/docs)。
 
-## 验证
+## 第一轮验收（9be224ef）
 
 - 工具链保持 Kotlin 1.3.72、Gradle 5.4.1、JDK 8；每个实现提交先通过对应 JUnit，再创建本地提交。
 - 全量命令：`:common:check :common:jar --rerun-tasks`。check 包括全部默认测试及独立 Java JAR 消费。
@@ -116,3 +116,75 @@
 - 频道分组与搜索历史的保存回调由调用方实现；没有读取或写入 App 存储。
 
 既有 SharedModules 删除状态和 CommentPageTest 工作区状态保留，不混入本次提交。
+
+## 第二轮审查修复与能力补齐（2026-10-18）
+
+起点：`9be224ef`。本轮先处理 7 项审查问题，再补现代内容、观看队列、评论实体、回放和外部分组导入。保持 Kotlin 1.3.72/JVM 8、领域顶层函数和实例状态；HTTP、JSON 与上下文拆开组织，公共包名及旧函数入口保留。旧参数数量增加 JVM 重载，独立 Java 示例验证旧构造与加载调用；不宣称所有生成的 data-class 方法都具有二进制兼容性。
+
+下表按真实提交顺序记录 27 条实现提交。对应测试均已执行；职责整理和 latch 替换复用已有测试。最后的 `test(common): verify reviewed core capabilities` 提交包含本节、使用说明、fixture 来源和第六项公共在线读取，其 SHA 用 `git log -1` 查看。
+
+| # | 机制与命名 | 一行 commit 与 SHA | 对应测试 | 固定引用 / 依据 |
+|---|---|---|---|---|
+| 1 | 身份与语言地区进入隔离键，隔离键使用凭据摘要；`RequestContext.scope / textDigest` | `6f3dedbf fix(common): isolate playback by identity and locale` | PlaybackIdentityTest / RequestContextTest / PlaybackSessionTest | 本地上下文与缓存审查 |
+| 2 | 选流偏好参与客户端成功判定，缺少完整组合继续后备；音频模式保留音频入口；`loadPlayer / preferredPlayback` | `6d00c2c3 fix(common): continue playback until formats match` | PlaybackChoiceTest / PlaybackPreferenceTest / PlayerPlaybackTest | 本地选流审查 |
+| 3 | 播放结果期限取 Token 与响应期限较小值，过期后重新加载；`PlayerAnswer.expiresAtMs` | `02a55be4 fix(common): expire playback with its bound tokens` | PlaybackExpiryTest / PlayerContextTest | 本地有效期审查 |
+| 4 | Provider 收到实际匿名或登录身份，保留 visitor 与用途；`PlayerTokenRequest.context` | `4f7d17ac fix(common): bind tokens to the actual player identity` | PlayerIdentityTest / PlayerContextTest / PlayerChallengesTest | 本地请求绑定审查 |
+| 5 | 解析 Shorts 首次替换端点及 entries 序列，明确空页与未知形状；`ShortsPage / shortsPage / readShorts` | `8718b198 fix(common): read shorts sequence responses` | ShortsPageTest / HomeBrowseTest | MSC ReelResult / ReelContinuationResult |
+| 6 | 排除菜单、侧栏及其他分组的 continuation，优先当前内容分页；`PageKey / pageKey` | `32c3696d fix(common): keep continuations within their content scope` | PageKeyTest / SearchPageTest / BrowsePageTest / NoticeReadTest | 本地分页审查 |
+| 7 | 首次绑定业务命令先交付，再带确认序号建立流；`LoungeFrames / LoungeConnection` | `72cf3d48 fix(common): deliver lounge commands from the initial bind` | LoungeInitialTest / LoungeConnectionTest / LoungeReporterTest | MSC LoungeService / 本地 LoungeBind |
+| 8 | HTTP 与 JSON 从上下文拆分，保留公共适配入口；移除无用参数和遮蔽命名；`HttpRead / JsonRead / RequestContext` | `9f4f6d56 fix(common): separate request and response mechanisms` | RequestContextTest / PlayerIdentityTest / AccountSelectTest / LoungeInitialTest | 本地职责拆分 |
+| 9 | 读取现代 lockup、Shorts 卡片、原始动作端点；分组按线序保留；`ContentRead / PageAction / ActionEndpoint` | `fd3b531d feat(common): read modern content and action endpoints` | ContentReadTest / HistoricalFixtureTest / SearchPageTest | MSC CommonItems / CommonHelper |
+| 10 | 类型化加载区分未知非空内容与明确空页，保留服务端提示；`PageRead / readBrowsePage / readSearchPage` | `0e6d1c15 fix(common): distinguish unknown content from empty pages` | PageReadTest / SearchRetryTest / LibraryBrowseTest | 本地响应边界审查 |
+| 11 | 队列保留重复视频、索引、上下集端点和续播位置；`WatchQueue / QueueVideo / resumeSeconds` | `12de2be7 feat(common): read watch queues and resume positions` | WatchQueueTest / WatchPageTest | MSC MediaItemMetadata / next 响应 |
+| 12 | 按编码族、动态范围和帧率筛选；未知清单不绕过明确格式限制；`PlayerVideo / VideoRange / PlaybackPreference` | `f99fdfb5 feat(common): select playback by codec range and frame rate` | PlayerVideoTest / PlaybackChoiceTest / PlaybackPreferenceTest | 本地选流扩展 |
+| 13 | JVM 读取嵌入页与脚本，显式刷新重新发现脚本并清除 Token 缓存；`PlayerScriptProvider / JvmPlayerScripts` | `44ba3bfe feat(common): refresh player scripts within a session` | PlayerScriptReadTest / PlayerChallengesTest / PlaybackRecoveryTest | 本地 PlayerScript / PlayerTimestamp |
+| 14 | 登记清单子请求并绑定会话、来源与原偏好；来源及 URL 集合有界；`PlaybackSession.registerRequest / PlayerSource` | `57e9fb01 feat(common): keep media child requests with their source` | PlaybackSourceTest / PlaybackRecoveryTest / PlaybackSessionTest | 本地来源审查 |
+| 15 | 关联评论实体、视图、回复和工具栏，分段保留导航、样式及 emoji；`CommentEntityRead / CommentRun / Comment.parentId` | `6cb2c988 feat(common): read comment entities and attributed text` | CommentEntityReadTest / CommentReadTest / CommentPageTest | 本地实体与富文本实现 |
+| 16 | HTTP 成功与操作确认分离；明确失败、明确成功及未确认分别保留；`ActionState / ActionReply.confirmed` | `9a41671b fix(common): distinguish confirmed and unconfirmed actions` | ActionStateTest / VideoActionTest / CommentActionTest / PlaylistActionTest | 本地写结果审查 |
+| 17 | 读取回放偏移与有序动作；分页去重，seek 重置游标，无后台任务；`ChatEvent / ChatReplay / loadChatReplay` | `2847b110 feat(common): read and seek live chat replay events` | ChatReplayTest / ChatPageTest | yt-dlp YoutubeLiveChatFD.real_download / parse_actions_replay |
+| 18 | 导入三种第三方格式并保留稳定 ID；可注入 handle 解析，失败不修改分组；`GroupFormat / readChannelGroups` | `a6044b7d feat(common): read external channel group exports` | ChannelGroupReadTest / ChannelGroupsTest | MSC PocketTubeService / NewPipeService / GrayJayService |
+| 19 | 关闭唤醒默认等待，禁止并行监听与关闭后回调；`ConnectionWait / ChatConnection / LoungeConnection` | `76b95da4 fix(common): wake connection waits when closed` | ConnectionCloseTest / ChatReplayTest / LoungeConnectionTest | 本地连接生命周期审查 |
+| 20 | 按 mutation.entityKey 关联实体，支持 engagement 工具栏状态及作者标记；`entityPayloads / Comment.authorId / isHearted` | `17fb0eb9 fix(common): join comments by mutation entity keys` | CommentWireTest / CommentEntityReadTest / CommentPageTest | yt-dlp YoutubeIE._extract_comment / _comment_entries |
+| 21 | 歌单 lockup 保留歌单身份，不被首个视频 ID 覆盖；`contentItem` | `ec12d42d fix(common): keep playlist lockups distinct from their videos` | ContentReadTest / HistoricalFixtureTest | MSC LockupItem / 本地审查 |
+| 22 | 评论首屏只读取内容分页，不将排序 token 作为初始评论键；`commentKey` | `ae9402d1 fix(common): keep comment pagination separate from sorting` | CommentKeyTest / CommentPageTest / CommentReadTest | 本地评论分页审查 |
+| 23 | 支持 BOM，GrayJay 混合平台仅导入 YouTube 频道；`readChannelGroups` | `5d289e4a fix(common): read mixed platform group exports safely` | ChannelGroupReadTest / ChannelGroupsTest | MSC GrayJayService / 本地导入边界 |
+| 24 | 用 JVM latch 交付共享加载结果及异常，保持等待方取消语义；`PlaybackLock.Slot` | `d21dd963 fix(common): simplify playback load completion` | PlaybackLockTest / PlaybackSessionTest / PlaybackCacheTest | 本地并发实现 |
+| 25 | 有效 noop 心跳重置连续失败预算，避免健康连接累积重连失败；`LoungeFrames.framesRead` | `44916674 fix(common): keep lounge heartbeat recovery active` | LoungeHeartbeatTest / LoungeConnectionTest / LoungeInitialTest | 本地 Lounge 心跳审查 |
+| 26 | 为旧参数数量保留 JVM 重载，Java 示例直接验证旧构造与加载调用；`JvmOverloads / Standalone` | `5d11f93d fix(common): keep legacy JVM call overloads` | verifyStandalone / check | 本地 JVM 消费兼容 |
+| 27 | Shorts 专用页保留完整 reel 端点与播放器参数；`MediaItem.endpoint / playerParams` | `787c98a5 fix(common): keep shorts playback navigation parameters` | ShortsPageTest / HomeBrowseTest / ContentReadTest | MSC ReelWatchEndpoint |
+
+### 固定引用
+
+- 表中 MSC 原始符号固定到 [MediaServiceCore@7c2451ea9aaff623d53ef1fceaf863a9cfe16cf5](https://github.com/yuliskov/MediaServiceCore/tree/7c2451ea9aaff623d53ef1fceaf863a9cfe16cf5)。Shorts 参考 `browse/v2/gen/BrowseResult.kt` 的 `ReelResult/ReelContinuationResult`；现代卡片参考 `common/models/gen/CommonItems.kt/CommonHelper.kt`；分组参考 `channelgroups/importing` 下三种原始服务。
+- 评论实体键及 engagement 工具栏状态另核对 [yt-dlp@897341241f2bfb2439fe0367f4c7c9ccd29a3828 · YoutubeIE._extract_comment/_comment_entries](https://github.com/yt-dlp/yt-dlp/blob/897341241f2bfb2439fe0367f4c7c9ccd29a3828/yt_dlp/extractor/youtube/_video.py)。富文本分段和写操作确认状态是 common 的独立实现，测试不冒充线上账号验收。
+- 回放偏移、continuation 及 `currentPlayerState.playerOffsetMs` 核对 [同一固定 SHA · YoutubeLiveChatFD.real_download（局部 parse_actions_replay）](https://github.com/yt-dlp/yt-dlp/blob/897341241f2bfb2439fe0367f4c7c9ccd29a3828/yt_dlp/downloader/youtube_live_chat.py)。未引入 Python、下载器、JS 或 Token 运行时依赖。
+
+### 当前验收
+
+最终命令：`:common:check :common:jar :common:onlineReadTest --rerun-tasks`。**234 项默认测试、6 项公共在线读取，0 失败、0 错误、0 跳过**；独立 Java JAR 消费通过。原 198 项默认测试保留，新增 36 项。构建保持 JVM 8，旧监视器编译警告已消除。
+
+| 公共在线读取 | 实际覆盖 |
+|---|---|
+| youtubeSearch | 新搜索入口返回可解析条目 |
+| youtubeHome | 条目或服务端正常空页提示 |
+| youtubeOembed | 公共视频元数据 |
+| sponsorBlockRead | 片段或 404 无数据 |
+| dislikeRead | RYD 响应视频 ID 与请求一致 |
+| playerScriptRead | 真实嵌入页、播放器脚本、signatureTimestamp；没有执行脚本解算 |
+
+本次 JAR SHA-256：`06c67075e7cef4bf4cfde2af42ea2db4b2f5acaf546f90cd6831c8a2b9b7ce05`。该值对应本次构建，不宣称跨构建字节一致。
+
+### 使用与边界
+
+- `RequestContext.scope` 纳入账号、凭据摘要、visitor、语言、地区、品牌身份和 generation。隔离键及 RequestContext.toString 不包含原始凭据。
+- 客户端只有在选流满足需求时才结束尝试。指定 MIME、编码、画质、帧率或动态范围后，能力未知的清单不会绕过这些限制；宿主仍可自行读取 PlayerAnswer 的清单。
+- `PlayerAnswer.expiresAtMs` 取本次响应与已使用 Token 的较早期限。显式 fresh 会重新发现动态脚本并清理会话 Token 缓存；真实解算及 minting 仍需宿主 Provider。
+- `PlaybackSession.registerRequest(load, parentUrl, childUrl)` 为清单子资源登记归属；只接受同一会话中已知的父请求。每会话至多 64 条来源记录，每来源保留固定入口和至多 512 条子请求。恢复默认沿用来源的选流偏好。
+- `ActionReply.confirmed` 区分服务端明确确认与普通接收响应。`ReadResult.ok` 不等于已确认远端状态；未知确认形式保留 UNCONFIRMED，不自动重试写操作。
+- `ChatReplay.read(positionMs)` 返回带时间偏移的事件，seek 从种子游标重新读取；调度与播放器同步由调用方完成。close 唤醒默认等待；注入的等待和网络 I/O 仍由宿主实现取消/超时。
+- `readChannelGroups` 支持 MSC、PocketTube、NewPipe、GrayJay 及 BOM。NewPipe/GrayJay 的其他平台条目跳过；频道 ID 与 /channel/ URL 可离线读取，@handle 需要显式 resolve 回调。失败不会替换现有分组。
+- 新历史 fixture 为 Shorts 三页和外部分组三种格式的脱敏投影；现代评论、回放和恢复测试使用可控协议样本、假传输及可控时钟。
+
+当前足以支持 Litube v4 开始进行功能开发。发布验收仍需真实 OAuth/品牌账号、认证写操作、真实 JS/Token Provider、持续媒体读取/解码及 Lounge 实体设备；本轮没有与 App 联动，也未执行真实账号写入。
+
+既有 `SharedModules` 删除状态及 `CommentPageTest.kt` 工作区状态保留。该测试文件 SHA-256 仍为 `E4E1288759E23CD6107A88F7A2E1B94E1D07DEF576D37A914F4318F1FAA630E7`。全部提交仅在 MSC 本地，没有推送。
