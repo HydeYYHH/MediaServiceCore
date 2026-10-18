@@ -20,9 +20,13 @@ fun captionLanguages(body: String): List<CaptionLanguage> {
         it.text("languageCode")?.let { code -> CaptionLanguage(code, it.display("languageName")) }
     }.distinctBy { it.code.toLowerCase(Locale.ROOT) }
 }
-fun translateCaptions(tracks: List<PlayerCaption>, languages: List<CaptionLanguage>): List<PlayerCaption> {
+fun translateCaptions(tracks: List<PlayerCaption>, languages: List<CaptionLanguage>, audio: List<PlayerAudio> = emptyList()): List<PlayerCaption> {
     if (tracks.isEmpty() || languages.isEmpty()) return tracks
-    val origin = tracks.firstOrNull { it.automatic && it.translatable && it.url != null }
+    // PlayerResultExtensions.findOriginTrack, upstream 4929ff24 + 7c2451ea.
+    val dubbed = audio.filter { it.autoDubbed }.mapNotNull { it.language?.toLowerCase(Locale.ROOT) }.toSet()
+    val origin = tracks.firstOrNull { it.automatic && it.translatable && it.url != null &&
+        urlParameter(it.url, "variant") != "timing-optimized" && it.language?.toLowerCase(Locale.ROOT) !in dubbed }
+        ?: tracks.firstOrNull { it.automatic && it.translatable && it.url != null }
         ?: tracks.firstOrNull { it.translatable && it.url != null } ?: return tracks
     val known = tracks.mapNotNull { it.language?.toLowerCase(Locale.ROOT) }.toMutableSet()
     val result = tracks.toMutableList()
