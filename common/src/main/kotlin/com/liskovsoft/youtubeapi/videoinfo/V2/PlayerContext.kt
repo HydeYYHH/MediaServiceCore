@@ -18,8 +18,8 @@ fun loadPlayer(videoId: String, context: RequestContext, http: HttpClient = JvmH
     var lastError: RequestError? = null
     val signIn = if (context.accessToken == null) SignIn.SIGNED_OUT else SignIn.SIGNED_IN
     var tokenDeadline: Long? = null
-    fun token(client: PlayerClient, purpose: TokenPurpose): String? {
-        val value = tokens?.token(PlayerTokenRequest(client, videoId, context, purpose))
+    fun token(client: PlayerClient, purpose: TokenPurpose, identity: RequestContext): String? {
+        val value = tokens?.token(PlayerTokenRequest(client, videoId, identity, purpose))
             ?.takeIf { it.value.isNotBlank() && it.expiresAtMs > now() } ?: return null
         tokenDeadline = minOf(tokenDeadline ?: Long.MAX_VALUE, value.expiresAtMs)
         return value.value
@@ -34,7 +34,7 @@ fun loadPlayer(videoId: String, context: RequestContext, http: HttpClient = JvmH
         val identity = if (client == PlayerClient.TV) context else context.anonymous()
         var query = contextualQuery(playerQuery(client, videoId, identity.visitor, script?.let { signatureTimestamp(it.source) }), identity)
         try {
-            val pot = token(client, TokenPurpose.PLAYER)
+            val pot = token(client, TokenPurpose.PLAYER, identity)
             if (pot != null) {
                 val root = jsonObject(query.body)!!
                 query = query.copy(body = Json.Obj(root.fields + ("serviceIntegrityDimensions" to Json.Obj(mapOf("poToken" to Json.Str(pot))))).encode())
@@ -47,7 +47,7 @@ fun loadPlayer(videoId: String, context: RequestContext, http: HttpClient = JvmH
             val receivedAt = now()
             var fetched = playerAnswer(response.value!!.encode())
             fetched = openBoundFormats(fetched, script, solver)
-            val mediaPot = token(client, TokenPurpose.MEDIA)
+            val mediaPot = token(client, TokenPurpose.MEDIA, identity)
             if (mediaPot != null) {
                 fun attach(formats: List<PlayerFormat>) = formats.map { it.copy(url = it.url?.let { url -> urlWithParameter(url, "pot", mediaPot) }) }
                 fetched = fetched.copy(muxedFormats = attach(fetched.muxedFormats), adaptiveFormats = attach(fetched.adaptiveFormats),
@@ -55,7 +55,7 @@ fun loadPlayer(videoId: String, context: RequestContext, http: HttpClient = JvmH
                     adaptiveUrls = fetched.adaptiveUrls.map { urlWithParameter(it, "pot", mediaPot) },
                     hlsUrl = fetched.hlsUrl?.let { urlWithParameter(it, "pot", mediaPot) })
             }
-            val subtitlePot = token(client, TokenPurpose.SUBTITLE)
+            val subtitlePot = token(client, TokenPurpose.SUBTITLE, identity)
             if (subtitlePot != null) fetched = fetched.copy(captions = fetched.captions.map {
                 it.copy(url = it.url?.let { url -> urlWithParameter(url, "pot", subtitlePot) })
             })
