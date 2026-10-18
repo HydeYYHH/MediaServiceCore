@@ -12,6 +12,8 @@ internal class LoungeFrames(initialId: Long = -1, private val maxChars: Int = 10
     private val pending = StringBuilder()
     var lastId = initialId
         private set
+    var framesRead = 0L
+        private set
     fun push(chunk: String): List<LoungeCommand> {
         pending.append(chunk)
         if (pending.length > maxChars) throw IOException("lounge_frame_too_large")
@@ -27,6 +29,7 @@ internal class LoungeFrames(initialId: Long = -1, private val maxChars: Int = 10
             val frame = pending.substring(newline+1,newline+1+size)
             pending.delete(0,newline+1+size)
             val rows = jsonValue(frame) as? Json.Arr ?: throw IOException("invalid_lounge_json")
+            framesRead++
             for (row in rows.items) {
                 val values = row as? Json.Arr ?: continue
                 val id = (values.items.firstOrNull() as? Json.Num)?.text?.toLongOrNull() ?: continue
@@ -88,9 +91,10 @@ class LoungeConnection(private val screenName: String, private val deviceId: Str
                             val count = it.read(buffer)
                             if (count < 0) break
                             if (count == 0) continue
+                            val before = frames.framesRead
                             val commands = frames.push(String(buffer,0,count))
                             current = current!!.copy(acknowledged=frames.lastId)
-                            if (commands.isNotEmpty()) failures = 0
+                            if (frames.framesRead > before) failures = 0
                             for (command in commands) { if (!closed) receive(command) }
                         }
                         if (!closed) frames.finish()
