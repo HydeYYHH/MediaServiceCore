@@ -8,7 +8,8 @@ data class CommentRun(
     val videoId: String?,
     val seconds: Int?,
     val channelId: String?,
-    val emoji: String?
+    val emoji: String?,
+    val bold: Boolean = false, val italic: Boolean = false, val strikethrough: Boolean = false
 )
 
 data class Comment(
@@ -27,7 +28,8 @@ data class Comment(
     val runs: List<CommentRun>,
     val dislikeKey: String?,
     val undislikeKey: String?,
-    val disliked: Boolean
+    val disliked: Boolean,
+    val parentId: String? = null, val replyCount: String? = null, val actions: List<PageAction> = emptyList()
 )
 
 data class CommentPage(val comments: List<Comment>, val nextKey: String?, val createKey: String?, val sortOptions: List<CommentSort> = emptyList())
@@ -74,7 +76,7 @@ fun commentPage(body: String): CommentPage {
                 runs,
                 buttonAction(renderer, "dislikeButton", "defaultServiceEndpoint"),
                 buttonAction(renderer, "dislikeButton", "toggledServiceEndpoint"),
-                disliked(renderer)
+                disliked(renderer), renderer.text("parentCommentId"), renderer.display("replyCount"), pageActions(renderer)
             ))
         }
     }
@@ -162,7 +164,8 @@ private fun commentRun(run: Json.Obj): CommentRun? {
     val channelId = endpoint?.obj("browseEndpoint")?.text("browseId")?.takeIf { it.isNotEmpty() }
     val emoji = emojiNode?.obj("image")?.let { firstThumbnail(it) }
     if (text == null && url == null && videoId == null && channelId == null && emoji == null) return null
-    return CommentRun(text ?: "", url, videoId, seconds, channelId, emoji)
+    return CommentRun(text ?: "", url, videoId, seconds, channelId, emoji,
+        run.bool("bold") == true, run.bool("italic") == true, run.bool("strikethrough") == true)
 }
 
 private fun emojiLabel(emoji: Json.Obj?): String? {
