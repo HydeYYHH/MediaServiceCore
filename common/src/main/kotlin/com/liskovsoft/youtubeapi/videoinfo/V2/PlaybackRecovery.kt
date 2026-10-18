@@ -4,8 +4,8 @@ class PlaybackRecovery(private val session: PlaybackSession) {
     private data class Budget(var refreshed: Boolean = false, var fallback: Boolean = false, val refused: MutableSet<PlayerClient> = LinkedHashSet())
     private val budgets = java.util.LinkedHashMap<String, Budget>()
     @Synchronized fun recover(failed: PlaybackLoad, failedUrl: String, status: Int? = null, transportFailed: Boolean = false,
-        preference: PlaybackPreference = PlaybackPreference()): ReadResult<PlaybackLoad> {
-        val source = failed.source ?: return rejected("unknown_source")
+        preference: PlaybackPreference = failed.source?.preference ?: PlaybackPreference()): ReadResult<PlaybackLoad> {
+        val source = session.source(failed) ?: return rejected("unknown_source")
         if (failedUrl !in source.urls) return rejected("unknown_request")
         if (status != 403 && !transportFailed) return rejected("not_recoverable")
         val key = source.videoId + "\u0000" + source.context.scope()
