@@ -11,7 +11,8 @@ interface PlayerTokenProvider { fun token(request: PlayerTokenRequest): PlayerTo
 fun loadPlayer(videoId: String, context: RequestContext, http: HttpClient = JvmHttpClient(),
     script: PlayerScript? = null, solver: PlayerSolver? = null, tokens: PlayerTokenProvider? = null,
     queues: PlayerClientQueues = PlayerClientQueues(), excluded: Set<PlayerClient> = emptySet(),
-    now: () -> Long = System::currentTimeMillis): ReadResult<PlayerLoad> {
+    now: () -> Long = System::currentTimeMillis,
+    preference: PlaybackPreference = PlaybackPreference()): ReadResult<PlayerLoad> {
     if (!videoIdAccepted(videoId)) return ReadResult(error = RequestError(RequestFailure.INVALID, "invalid_video_id"))
     var answer: PlayerAnswer? = null
     var lastError: RequestError? = null
@@ -52,6 +53,10 @@ fun loadPlayer(videoId: String, context: RequestContext, http: HttpClient = JvmH
                 it.copy(url = it.url?.let { url -> urlWithParameter(url, "pot", subtitlePot) })
             })
             answer = fetched
+            if (!selectPlayback(fetched, preference).hasSource()) {
+                lastError = RequestError(RequestFailure.UNSUPPORTED, "no_matching_format")
+                return@run PlayerAnswer(false, null, null, false, false, false, fetched.live)
+            }
             lastError = RequestError(RequestFailure.UNSUPPORTED, fetched.status ?: "no_playable_source")
             fetched
         } catch (_: InterruptedException) {

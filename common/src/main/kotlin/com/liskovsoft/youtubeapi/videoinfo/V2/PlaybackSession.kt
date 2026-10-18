@@ -18,7 +18,7 @@ class PlaybackSession(private val http: HttpClient = JvmHttpClient(), private va
             fresh.toString(), excluded.sortedBy { it.name }.toString(), generation.toString()).joinToString("\u0001")
         if (!fresh) results.get(key)?.let { return ReadResult(it) }
         val loaded = try { lock.load(key) {
-            val result = loadPlayer(videoId, context, http, script, scopedSolver, scopedTokens, queues, excluded, now)
+            val result = loadPlayer(videoId, context, http, script, scopedSolver, scopedTokens, queues, excluded, now, preference)
             if (!result.ok) PlaybackLoad(PlaybackForm.VOD, null, Playback(null, null, null), error = result.error)
             else {
                 val player = result.value!!
