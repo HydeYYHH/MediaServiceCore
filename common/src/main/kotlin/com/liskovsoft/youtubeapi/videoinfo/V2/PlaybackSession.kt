@@ -2,16 +2,21 @@ package com.liskovsoft.youtubeapi.videoinfo.V2
 
 data class PlayerSource(val videoId: String, val client: PlayerClient, val context: RequestContext, val urls: Set<String>, val sequence: Long)
 class PlaybackSession(private val http: HttpClient = JvmHttpClient(), private val script: PlayerScript? = null,
-    private val solver: PlayerSolver? = null, private val tokens: PlayerTokenProvider? = null) {
+    private val solver: PlayerSolver? = null, private val tokens: PlayerTokenProvider? = null,
+    private val now: () -> Long = System::currentTimeMillis) {
     private val lock = PlaybackLock()
     private val queues = PlayerClientQueues()
     private val sequence = java.util.concurrent.atomic.AtomicLong()
+    private val results = TimedCache<String, PlaybackLoad>(64, now)
+    fun invalidate() = results.clear()
     fun load(videoId: String, context: RequestContext = RequestContext(), preference: PlaybackPreference = PlaybackPreference(),
         fresh: Boolean = false, excluded: Set<PlayerClient> = emptySet()): ReadResult<PlaybackLoad> {
-        val key = listOf(videoId, context.scope(), preference.toString(), script?.url, script?.source,
-            fresh.toString(), excluded.sortedBy { it.name }.toString()).joinToString("\u0001")
+        val generation = results.generation()
+        val key = listOf(videoId, context.scope(), preference.copy(mimeTypes = preference.mimeTypes.toSortedSet()).toString(), script?.url, script?.source,
+            fresh.toString(), excluded.sortedBy { it.name }.toString(), generation.toString()).joinToString("\u0001")
+        if (!fresh) results.get(key)?.let { return ReadResult(it) }
         val loaded = try { lock.load(key) {
-            val result = loadPlayer(videoId, context, http, script, solver, tokens, queues, excluded)
+            val result = loadPlayer(videoId, context, http, script, solver, tokens, queues, excluded, now)
             if (!result.ok) PlaybackLoad(PlaybackForm.VOD, null, Playback(null, null, null), error = result.error)
             else {
                 val player = result.value!!
@@ -25,6 +30,7 @@ class PlaybackSession(private val http: HttpClient = JvmHttpClient(), private va
             Thread.currentThread().interrupt()
             return ReadResult(error = RequestError(RequestFailure.CANCELLED, "cancelled"))
         }
+        if (loaded.error == null) results.put(key, loaded, minOf(45000L, loaded.answer?.expiresInSeconds?.times(1000) ?: 45000L), generation)
         return if (loaded.error != null) ReadResult(error = loaded.error) else ReadResult(loaded)
     }
 }
