@@ -3,9 +3,10 @@ package com.liskovsoft.youtubeapi.videoinfo.V2
 private fun textNode(value: String?) = Json.Obj(mapOf("simpleText" to (value?.let { Json.Str(it) } ?: Json.Null)))
 
 internal fun commentEntityRenderers(root: Json.Obj, section: Json.Obj): List<Json.Obj> {
-    val entities = root.objects("commentEntityPayload").associateBy { it.text("key") ?: it.obj("properties")?.text("commentId") }
-    val states = root.objects("commentToolbarStateEntityPayload").associateBy { it.text("key") }
-    val surfaces = root.objects("commentToolbarSurfaceEntityPayload").associateBy { it.text("key") }
+    // YoutubeIE._extract_comment/_comment_entries, yt-dlp@897341241f2bfb2439fe0367f4c7c9ccd29a3828.
+    val entities = entityPayloads(root, "commentEntityPayload")
+    val states = entityPayloads(root, "commentToolbarStateEntityPayload", "engagementToolbarStateEntityPayload")
+    val surfaces = entityPayloads(root, "commentToolbarSurfaceEntityPayload", "engagementToolbarSurfaceEntityPayload")
     val views = section.objects("commentViewModel").filter { it.text("commentKey") != null }.distinctBy { it.text("commentKey") }
     val ordered = if (views.isEmpty()) entities.values.map { it to null } else views.mapNotNull { view ->
         entities[view.text("commentKey")]?.let { it to view }
@@ -13,7 +14,7 @@ internal fun commentEntityRenderers(root: Json.Obj, section: Json.Obj): List<Jso
     return ordered.mapNotNull { (entity, view) ->
         val properties = entity.obj("properties") ?: return@mapNotNull null
         val id = properties.text("commentId") ?: return@mapNotNull null
-        val key = entity.text("key") ?: id
+        val key = view?.text("commentKey") ?: entity.text("key") ?: id
         val author = entity.obj("author")
         val toolbar = entity.obj("toolbar")
         val state = states[view?.text("toolbarStateKey")]
@@ -28,8 +29,13 @@ internal fun commentEntityRenderers(root: Json.Obj, section: Json.Obj): List<Jso
             "authorText" to textNode(author?.text("displayName")),
             "contentText" to Json.Obj(mapOf("runs" to Json.Arr(attributedRuns(properties.obj("content"))))),
             "publishedTimeText" to textNode(properties.text("publishedTime")),
-            "voteCount" to textNode(if (liked) toolbar?.text("likeCountLiked") ?: toolbar?.text("likeCountNotliked") else toolbar?.text("likeCountNotliked")),
-            "replyCount" to textNode(toolbar?.text("replyCount")), "isLiked" to Json.Bool(liked))
+            "voteCount" to textNode((if (liked) toolbar?.scalar("likeCountLiked") else null)
+                ?: toolbar?.scalar("likeCountNotliked") ?: toolbar?.scalar("likeCountA11y")),
+            "replyCount" to textNode(toolbar?.scalar("replyCount")), "isLiked" to Json.Bool(liked),
+            "isCreator" to Json.Bool(author?.bool("isCreator") == true), "isVerified" to Json.Bool(author?.bool("isVerified") == true),
+            "isPinned" to Json.Bool(view?.fields?.containsKey("pinnedText") == true))
+        author?.text("channelId")?.let { fields["authorEndpoint"] = Json.Obj(mapOf("browseEndpoint" to Json.Obj(mapOf("browseId" to Json.Str(it))))) }
+        state?.text("heartState")?.let { fields["isHearted"] = Json.Bool(it == "TOOLBAR_HEART_STATE_HEARTED") }
         author?.text("avatarThumbnailUrl")?.let { fields["authorThumbnail"] = Json.Obj(mapOf("thumbnails" to Json.Arr(listOf(Json.Obj(mapOf("url" to Json.Str(it))))))) }
         parent?.let { fields["parentCommentId"] = Json.Str(it) }
         thread?.obj("replies")?.let { fields["replies"] = it }
@@ -40,6 +46,20 @@ internal fun commentEntityRenderers(root: Json.Obj, section: Json.Obj): List<Jso
         }
         Json.Obj(fields)
     }
+}
+
+private fun entityPayloads(root: Json.Obj, vararg names: String): Map<String, Json.Obj> {
+    val values = LinkedHashMap<String, Json.Obj>()
+    for (name in names) for (payload in root.objects(name)) {
+        (payload.text("key") ?: payload.obj("properties")?.text("commentId"))?.let { values[it] = payload }
+    }
+    val mutations = root.arr("mutations") + root.path("frameworkUpdates", "entityBatchUpdate")?.arr("mutations").orEmpty()
+    for (value in mutations) {
+        val mutation = value as? Json.Obj ?: continue
+        val key = mutation.text("entityKey") ?: continue
+        for (name in names) mutation.obj("payload")?.obj(name)?.let { values[key] = it }
+    }
+    return values
 }
 
 private fun commentViewKey(node: Json.Obj?): String? = node?.text("commentKey")

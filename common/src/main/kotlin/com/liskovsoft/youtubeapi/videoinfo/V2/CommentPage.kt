@@ -29,7 +29,9 @@ data class Comment(
     val dislikeKey: String?,
     val undislikeKey: String?,
     val disliked: Boolean,
-    val parentId: String? = null, val replyCount: String? = null, val actions: List<PageAction> = emptyList()
+    val parentId: String? = null, val replyCount: String? = null, val actions: List<PageAction> = emptyList(),
+    val authorId: String? = null, val isCreator: Boolean = false, val isVerified: Boolean = false,
+    val isPinned: Boolean = false, val isHearted: Boolean? = null
 )
 
 data class CommentPage(val comments: List<Comment>, val nextKey: String?, val createKey: String?, val sortOptions: List<CommentSort> = emptyList())
@@ -76,7 +78,12 @@ fun commentPage(body: String): CommentPage {
                 runs,
                 buttonAction(renderer, "dislikeButton", "defaultServiceEndpoint"),
                 buttonAction(renderer, "dislikeButton", "toggledServiceEndpoint"),
-                disliked(renderer), renderer.text("parentCommentId"), renderer.display("replyCount"), pageActions(renderer)
+                disliked(renderer), renderer.text("parentCommentId"), renderer.display("replyCount"), pageActions(renderer),
+                renderer.path("authorEndpoint", "browseEndpoint")?.text("browseId"),
+                renderer.bool("isCreator") == true || renderer.bool("authorIsChannelOwner") == true,
+                renderer.bool("isVerified") == true,
+                renderer.bool("isPinned") == true || renderer.obj("pinnedCommentBadge") != null,
+                renderer.bool("isHearted") ?: if (renderer.path("actionButtons", "commentActionButtonsRenderer")?.obj("creatorHeart") != null) true else null
             ))
         }
     }
