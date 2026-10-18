@@ -1,0 +1,29 @@
+package com.liskovsoft.youtubeapi.videoinfo.V2
+import org.junit.Assert.*
+import org.junit.Test
+import java.util.concurrent.*
+class PlaybackSessionTest {
+    @Test fun coalescesTheSameDemandWithoutSharingAnotherAccountsLoad() {
+        val entered = CountDownLatch(1); val release = CountDownLatch(1)
+        val calls = java.util.concurrent.atomic.AtomicInteger()
+        val http = object : HttpClient { override fun execute(request: HttpRequest): HttpReply {
+            calls.incrementAndGet(); entered.countDown(); release.await(2, TimeUnit.SECONDS)
+            return HttpReply(200, """{"streamingData":{"formats":[{"url":"https://media"}]}}""")
+        }}
+        val session = PlaybackSession(http); val pool = Executors.newFixedThreadPool(3)
+        try {
+            val first = pool.submit(Callable { session.load("v", RequestContext(accountId = "a")) })
+            assertTrue(entered.await(2, TimeUnit.SECONDS))
+            val other = pool.submit(Callable { session.load("v", RequestContext(accountId = "b")) })
+            val joined = pool.submit(Callable { session.load("v", RequestContext(accountId = "a")) })
+            Thread.sleep(50); release.countDown()
+            val a = first.get(2, TimeUnit.SECONDS).value!!
+            assertEquals(a.source, joined.get(2, TimeUnit.SECONDS).value!!.source)
+            assertNotEquals(a.source, other.get(2, TimeUnit.SECONDS).value!!.source); assertEquals(2, calls.get())
+        } finally { release.countDown(); pool.shutdownNow() }
+    }
+    @Test fun returnsTheUnderlyingFailureAndAllowsANewAttempt() {
+        val http = object : HttpClient { override fun execute(request: HttpRequest) = HttpReply(503, "{}") }
+        assertEquals(RequestFailure.HTTP, PlaybackSession(http).load("v").error!!.kind)
+    }
+}

@@ -18,7 +18,10 @@ data class Playback(
 data class PlaybackLoad(
     val form: PlaybackForm,
     val client: PlayerClient?,
-    val playback: Playback
+    val playback: Playback,
+    val answer: PlayerAnswer? = null,
+    val source: PlayerSource? = null,
+    val error: RequestError? = null
 )
 
 private val emptyPlayback = Playback(null, null, null)
