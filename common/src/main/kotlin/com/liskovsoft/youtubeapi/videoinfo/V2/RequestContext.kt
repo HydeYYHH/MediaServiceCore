@@ -97,6 +97,7 @@ internal fun contextualQuery(query: PlayerQuery, context: RequestContext): Playe
     val headers = query.headers.toMutableMap()
     val origin = try { URI(query.url) } catch (_: Exception) { null }
     val api = origin?.scheme == "https" && origin.host == "www.youtube.com" && origin.path.startsWith("/youtubei/")
+    headers.keys.filter { it.equals("Cookie",true) || it.equals("Authorization",true) }.toList().forEach { headers.remove(it) }
     if (api && context.accessToken != null) headers["Authorization"] = "Bearer " + context.accessToken
     if (context.visitor != null) headers["X-Goog-Visitor-Id"] = context.visitor
     val user = context.onBehalfOfUser?.let { Json.Obj(mapOf("onBehalfOfUser" to Json.Str(it))) }

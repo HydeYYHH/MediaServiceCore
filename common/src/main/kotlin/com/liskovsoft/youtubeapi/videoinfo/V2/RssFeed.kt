@@ -18,6 +18,8 @@ fun rssVideos(body:String):ReadResult<List<RssVideo>> {
         builder.setErrorHandler(org.xml.sax.helpers.DefaultHandler())
         val document=builder.parse(org.xml.sax.InputSource(java.io.StringReader(body.removePrefix("\uFEFF"))))
         val atom="http://www.w3.org/2005/Atom"
+        if(document.documentElement.localName!="feed" || document.documentElement.namespaceURI!=atom)
+            return ReadResult(error=RequestError(RequestFailure.PARSE,"invalid_rss_feed"))
         val youtube="http://www.youtube.com/xml/schemas/2015"
         fun Element.text(ns:String,name:String)=getElementsByTagNameNS(ns,name).item(0)?.textContent
         val entries=document.getElementsByTagNameNS(atom,"entry")

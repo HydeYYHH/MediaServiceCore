@@ -11,6 +11,7 @@ class RequestContextTest {
         assertEquals("Bearer secret", q.headers["Authorization"])
         assertEquals("zh", jsonObject(q.body)!!.path("context", "client")!!.text("hl"))
         assertNull(youtubeQuery(YOUTUBE_API + "browse", "", c.anonymous()).headers["Authorization"])
+        assertNull(contextualQuery(q,c.anonymous()).headers["Authorization"])
         assertFalse(c.toString().contains("secret"))
         assertNotEquals(c.scope(), c.copy(accountId = "b").scope())
         assertNull(contextualQuery(q.copy(url = "https://example.com/youtubei/x", headers = emptyMap()), c).headers["Authorization"])

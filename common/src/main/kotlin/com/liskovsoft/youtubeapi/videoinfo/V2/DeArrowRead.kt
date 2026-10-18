@@ -9,10 +9,10 @@ data class DeArrowData(val titles:List<DeArrowTitle>,val thumbnails:List<DeArrow
 fun deArrowData(body:String):DeArrowData? {
     val root=jsonObject(body) ?: return null
     val titles=root.arr("titles").mapNotNull { it as? Json.Obj }.mapNotNull {
-        it.text("title")?.let { title -> DeArrowTitle(title,it.scalar("votes")?.toDoubleOrNull() ?: 0.0,it.bool("locked")==true,it.bool("original")==true) }
+        it.text("title")?.let { title -> DeArrowTitle(title,it.scalar("votes")?.toDoubleOrNull() ?: Double.NEGATIVE_INFINITY,it.bool("locked")==true,it.bool("original")==true) }
     }
     val thumbs=root.arr("thumbnails").mapNotNull { it as? Json.Obj }.map {
-        DeArrowThumbnail(it.scalar("timestamp")?.toDoubleOrNull(),it.scalar("votes")?.toDoubleOrNull() ?: 0.0,it.bool("locked")==true,it.bool("original")==true)
+        DeArrowThumbnail(it.scalar("timestamp")?.toDoubleOrNull(),it.scalar("votes")?.toDoubleOrNull() ?: Double.NEGATIVE_INFINITY,it.bool("locked")==true,it.bool("original")==true)
     }
     return DeArrowData(titles,thumbs,root.scalar("videoDuration")?.toDoubleOrNull(),root.scalar("randomTime")?.toDoubleOrNull())
 }

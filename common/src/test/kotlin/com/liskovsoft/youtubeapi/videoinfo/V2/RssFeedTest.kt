@@ -14,6 +14,7 @@ class RssFeedTest {
     }
     @Test fun rejectsMalformedXmlAndExternalEntities() {
         assertFalse(rssVideos("<feed>").ok)
+        assertFalse(rssVideos("<html><body>blocked</body></html>").ok)
         assertFalse(rssVideos("<!DOCTYPE feed [<!ENTITY x SYSTEM 'file:///not-read'>]><feed>&x;</feed>").ok)
     }
 }
