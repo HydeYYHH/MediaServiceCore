@@ -8,6 +8,8 @@ class PlaybackSession(private val http: HttpClient = JvmHttpClient(), private va
     private val queues = PlayerClientQueues()
     private val sequence = java.util.concurrent.atomic.AtomicLong()
     private val results = TimedCache<String, PlaybackLoad>(64, now)
+    private val scopedSolver = solver?.let { CachedPlayerSolver(it, MemoryPlaybackCache(now = now)) }
+    private val scopedTokens = tokens?.let { CachedPlayerTokens(it, now = now) }
     fun invalidate() = results.clear()
     fun load(videoId: String, context: RequestContext = RequestContext(), preference: PlaybackPreference = PlaybackPreference(),
         fresh: Boolean = false, excluded: Set<PlayerClient> = emptySet()): ReadResult<PlaybackLoad> {
@@ -16,7 +18,7 @@ class PlaybackSession(private val http: HttpClient = JvmHttpClient(), private va
             fresh.toString(), excluded.sortedBy { it.name }.toString(), generation.toString()).joinToString("\u0001")
         if (!fresh) results.get(key)?.let { return ReadResult(it) }
         val loaded = try { lock.load(key) {
-            val result = loadPlayer(videoId, context, http, script, solver, tokens, queues, excluded, now)
+            val result = loadPlayer(videoId, context, http, script, scopedSolver, scopedTokens, queues, excluded, now)
             if (!result.ok) PlaybackLoad(PlaybackForm.VOD, null, Playback(null, null, null), error = result.error)
             else {
                 val player = result.value!!

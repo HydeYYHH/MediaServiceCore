@@ -38,9 +38,7 @@ fun loadPlayer(videoId: String, context: RequestContext, http: HttpClient = JvmH
                 return@run PlayerAnswer(true, null, null, false, false, false, false)
             }
             var fetched = playerAnswer(response.value!!.encode())
-            if (solver != null && script != null) fetched = openFormats(fetched) { signatures, throttles ->
-                solver.solve(PlayerChallengeRequest(script, signatures, throttles))
-            }
+            fetched = openBoundFormats(fetched, script, solver)
             val mediaPot = token(client, TokenPurpose.MEDIA)
             if (mediaPot != null) {
                 fun attach(formats: List<PlayerFormat>) = formats.map { it.copy(url = it.url?.let { url -> urlWithParameter(url, "pot", mediaPot) }) }

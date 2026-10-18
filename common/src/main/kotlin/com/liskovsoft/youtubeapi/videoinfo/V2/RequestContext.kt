@@ -10,7 +10,7 @@ data class RequestContext(
     val generation: Long = 0, val onBehalfOfUser: String? = null
 ) {
     fun anonymous() = copy(accountId = null, accessToken = null, onBehalfOfUser = null)
-    internal fun scope() = listOf(accountId, visitor, generation.toString(), onBehalfOfUser).joinToString("\u0000")
+    internal fun scope() = listOf(accountId, visitor, generation.toString(), onBehalfOfUser).joinToString("\u0000") { if (it == null) "-" else it.length.toString() + ":" + it }
     override fun toString() = "RequestContext(language=$language, region=$region, generation=$generation)"
 }
 data class HttpRequest(val method: String, val url: String, val headers: Map<String, String> = emptyMap(), val body: String = "")
