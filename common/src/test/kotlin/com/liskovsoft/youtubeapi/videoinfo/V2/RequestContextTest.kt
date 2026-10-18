@@ -25,12 +25,14 @@ class RequestContextTest {
     }
     @Test fun defaultHttpKeepsHeadersAndDoesNotFollowRedirects() {
         val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
-        server.createContext("/") { e -> e.responseHeaders.add("Retry-After", "3"); e.responseHeaders.add("Location", "/next"); e.sendResponseHeaders(302, -1); e.close() }
+        var agent: String? = null
+        server.createContext("/") { e -> agent = e.requestHeaders.getFirst("User-Agent"); e.responseHeaders.add("Retry-After", "3"); e.responseHeaders.add("Location", "/next"); e.sendResponseHeaders(302, -1); e.close() }
         server.start()
         try {
             val reply = JvmHttpClient().execute(HttpRequest("GET", "http://127.0.0.1:${server.address.port}/"))
             assertEquals(302, reply.status)
             assertEquals("3", reply.header("retry-after"))
+            assertEquals("MediaServiceCore", agent)
         } finally { server.stop(0) }
     }
 }

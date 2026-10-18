@@ -32,6 +32,7 @@ class JvmHttpClient(private val timeoutMs: Int = 15000, private val maxBodyBytes
             connection.instanceFollowRedirects = false
             connection.connectTimeout = timeoutMs
             connection.readTimeout = timeoutMs
+            connection.setRequestProperty("User-Agent", "MediaServiceCore")
             for ((name, value) in request.headers) connection.setRequestProperty(name, value)
             if (request.method == "POST") {
                 connection.doOutput = true
