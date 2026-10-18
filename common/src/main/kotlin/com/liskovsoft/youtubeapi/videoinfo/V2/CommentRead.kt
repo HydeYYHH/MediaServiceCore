@@ -16,16 +16,11 @@ internal fun commentRenderers(root: Json.Obj, section: Json.Obj): List<Json.Obj>
         val replies = thread?.obj("replies")
         if (replies != null && renderer.obj("replies") == null) Json.Obj(renderer.fields + ("replies" to replies)) else renderer
     }
-    val modern = root.objects("commentEntityPayload").map { entity ->
-        val p = entity.obj("properties")
-        val author = entity.obj("author")
-        fun str(value: String?) = if (value == null) Json.Null else Json.Str(value)
-        fun display(value: String?) = Json.Obj(mapOf("simpleText" to str(value)))
-        Json.Obj(mapOf("commentId" to str(p?.text("commentId")), "authorText" to display(author?.text("displayName")),
-            "contentText" to display(p?.obj("content")?.text("content")), "publishedTimeText" to display(p?.text("publishedTime")),
-            "voteCount" to display(entity.obj("toolbar")?.text("likeCountNotliked"))))
+    val modern = commentEntityRenderers(root, section)
+    val order = commentOrder(section)
+    return (legacy + modern).distinctBy { it.text("commentId") ?: it.encode() }.sortedBy {
+        order.indexOf(it.text("entityKey") ?: it.text("commentId")).takeIf { position -> position >= 0 } ?: Int.MAX_VALUE
     }
-    return (legacy + modern).distinctBy { it.text("commentId") ?: it.encode() }
 }
 internal fun commentSortOptions(root: Json.Obj): List<CommentSort> =
     root.objects("sortFilterSubMenuRenderer").flatMap { it.arr("subMenuItems") }.mapNotNull { it as? Json.Obj }.mapNotNull {
