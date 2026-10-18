@@ -1,0 +1,25 @@
+package com.liskovsoft.youtubeapi.videoinfo.V2
+
+enum class VideoVote(val endpoint: String) { LIKE("like/like"), UNLIKE("like/removelike"), DISLIKE("like/dislike"), UNDISLIKE("like/removedislike") }
+data class ActionReply(val status: String?, val body: String) { override fun toString() = "ActionReply(status=$status)" }
+internal fun actionReply(root: Json.Obj): ReadResult<ActionReply> {
+    val status = root.text("status")
+    if (root.bool("success") == false || status in listOf("ERROR", "FAILED", "STATUS_FAILED", "STATUS_ERROR"))
+        return ReadResult(error = RequestError(RequestFailure.HTTP, status ?: "action_failed"))
+    return ReadResult(ActionReply(status, root.encode()))
+}
+internal fun signedAction(endpoint: String, fields: String, context: RequestContext, http: HttpClient): ReadResult<ActionReply> {
+    if (context.accessToken == null) return ReadResult(error = RequestError(RequestFailure.AUTH, "sign_in_required"))
+    val reply = requestObject(youtubeQuery(YOUTUBE_API + endpoint, fields, context), http)
+    return if (reply.ok) actionReply(reply.value!!) else ReadResult(error = reply.error)
+}
+fun voteVideo(videoId: String, vote: VideoVote, context: RequestContext, http: HttpClient = JvmHttpClient()): ReadResult<ActionReply> {
+    if (!videoIdAccepted(videoId)) return ReadResult(error = RequestError(RequestFailure.INVALID, "invalid_video_id"))
+    return signedAction(vote.endpoint, "\"target\":{${payload("videoId" to videoId)}}", context, http)
+}
+fun subscribeChannel(channelId: String, subscribed: Boolean, context: RequestContext, params: String? = null,
+    http: HttpClient = JvmHttpClient()): ReadResult<ActionReply> {
+    if (!videoIdAccepted(channelId)) return ReadResult(error = RequestError(RequestFailure.INVALID, "invalid_channel_id"))
+    return signedAction("subscription/" + if (subscribed) "subscribe" else "unsubscribe",
+        "\"channelIds\":[${jsonQuote(channelId)}],"+payload("params" to (params ?: "")), context, http)
+}
