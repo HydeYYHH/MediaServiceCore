@@ -1,0 +1,15 @@
+{
+  "_source": "upstream@7c2451ea:channelgroups/newpipe_subscriptions.json",
+  "subscriptions": [
+    {
+      "service_id": 0,
+      "url": "https://www.youtube.com/channel/UCiifkYAs_bq1pt_zbNAzYGg",
+      "name": "Channel1"
+    },
+    {
+      "service_id": 0,
+      "url": "https://www.youtube.com/channel/UC4-79UOlP48-QNGgCko5p2g",
+      "name": "Channel2"
+    }
+  ]
+}
