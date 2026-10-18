@@ -2,7 +2,7 @@ package com.liskovsoft.youtubeapi.videoinfo.V2
 
 data class BrowseTab(val title: String?, val browseId: String?, val params: String?, val selected: Boolean)
 data class BrowsePage(val items: List<MediaItem>, val groups: List<MediaGroup>, val tabs: List<BrowseTab>, val nextKey: String?,
-    val messages: List<String> = emptyList())
+    val messages: List<String> = emptyList(), val actions: List<PageAction> = emptyList())
 fun browsePage(body: String): BrowsePage {
     val root = jsonObject(body) ?: return BrowsePage(emptyList(), emptyList(), emptyList(), null)
     val tabs = root.objects("tabRenderer").map {
@@ -13,7 +13,7 @@ fun browsePage(body: String): BrowsePage {
     val messages = listOf("feedNudgeRenderer","messageRenderer","backgroundPromoRenderer","alertRenderer").flatMap { name ->
         selected.objects(name).mapNotNull { it.display("title") ?: it.display("text") ?: it.display("message") }
     }.distinct()
-    return BrowsePage(contentItems(selected), pageGroups(selected), tabs, pageKey(selected), messages)
+    return BrowsePage(contentItems(selected), pageGroups(selected), tabs, pageKey(selected), messages, pageActions(selected))
 }
 fun browseQuery(browseId: String?, context: RequestContext = RequestContext(), params: String? = null, continuation: String? = null): PlayerQuery {
     if (browseId.isNullOrBlank() && continuation.isNullOrBlank()) return PlayerQuery("", emptyMap(), "")

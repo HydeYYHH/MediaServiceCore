@@ -153,11 +153,13 @@ internal fun Json.objects(name: String): List<Json.Obj> {
     visit(this)
     return result
 }
-internal fun Json.Obj.display(name: String): String? = obj(name)?.let { text ->
-    text.text("simpleText") ?: text.arr("runs").mapNotNull { (it as? Json.Obj)?.text("text") }.joinToString("").takeIf { it.isNotEmpty() }
+internal fun Json.Obj.display(name: String): String? = text(name) ?: obj(name)?.let { text ->
+    text.text("simpleText") ?: text.text("content")
+        ?: text.arr("runs").mapNotNull { (it as? Json.Obj)?.text("text") }.joinToString("").takeIf { it.isNotEmpty() }
 }
 internal fun Json.Obj.thumbnail(name: String): String? =
-    obj(name)?.arr("thumbnails")?.mapNotNull { (it as? Json.Obj)?.text("url") }?.lastOrNull()
+    obj(name)?.let { image -> (image.arr("thumbnails") + image.arr("sources"))
+        .mapNotNull { (it as? Json.Obj)?.text("url") }.lastOrNull() }
 
 internal fun Json.encode(): String = when (this) {
     Json.Null -> "null"
