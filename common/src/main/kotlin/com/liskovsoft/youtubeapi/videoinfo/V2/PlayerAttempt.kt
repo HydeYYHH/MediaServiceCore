@@ -53,7 +53,8 @@ data class PlayerFormat(
     val cipher: String?,
     val height: Int? = null,
     val bitrate: Int? = null,
-    val fps: Int? = null
+    val fps: Int? = null,
+    val audioTrack: PlayerAudio? = null
 )
 
 data class AttemptResult(val form: PlaybackForm, val client: PlayerClient?)

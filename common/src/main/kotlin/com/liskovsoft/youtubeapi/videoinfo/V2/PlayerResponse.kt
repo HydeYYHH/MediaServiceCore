@@ -77,7 +77,8 @@ private fun Json.Obj.formats(name: String): List<PlayerFormat> {
             cipher,
             format.integer("height"),
             format.integer("bitrate"),
-            format.integer("fps")
+            format.integer("fps"),
+            readPlayerAudio(format)
         ))
     }
     return formats
