@@ -3,7 +3,7 @@ package com.liskovsoft.youtubeapi.videoinfo.V2
 data class PlayerSource(val videoId: String, val client: PlayerClient, val context: RequestContext, val urls: Set<String>, val sequence: Long)
 class PlaybackSession(private val http: HttpClient = JvmHttpClient(), private val script: PlayerScript? = null,
     private val solver: PlayerSolver? = null, private val tokens: PlayerTokenProvider? = null,
-    private val now: () -> Long = System::currentTimeMillis) {
+    private val now: () -> Long = System::currentTimeMillis, private val scripts: PlayerScriptProvider? = null) {
     private val lock = PlaybackLock()
     private val queues = PlayerClientQueues()
     private val sequence = java.util.concurrent.atomic.AtomicLong()
@@ -13,13 +13,20 @@ class PlaybackSession(private val http: HttpClient = JvmHttpClient(), private va
     fun invalidate() = results.clear()
     fun load(videoId: String, context: RequestContext = RequestContext(), preference: PlaybackPreference = PlaybackPreference(),
         fresh: Boolean = false, excluded: Set<PlayerClient> = emptySet()): ReadResult<PlaybackLoad> {
+        val resolved = try { scripts?.script(videoId, context, fresh) } catch (_: InterruptedException) {
+            Thread.currentThread().interrupt()
+            return ReadResult(error = RequestError(RequestFailure.CANCELLED, "cancelled"))
+        } catch (_: Exception) { return ReadResult(error = RequestError(RequestFailure.TRANSPORT, "script_load_failed")) }
+        if (resolved != null && !resolved.ok) return ReadResult(error = resolved.error)
+        val activeScript = resolved?.value ?: script
+        if (fresh) scopedTokens?.clear()
         val generation = results.generation()
         val key = listOf(videoId, context.scope(), preference.copy(mimeTypes = preference.mimeTypes.toSortedSet(),
-            videoCodecs = preference.videoCodecs.toSortedSet(), audioCodecs = preference.audioCodecs.toSortedSet()).toString(), script?.url, script?.source,
+            videoCodecs = preference.videoCodecs.toSortedSet(), audioCodecs = preference.audioCodecs.toSortedSet()).toString(), activeScript?.url, activeScript?.source?.let(::textDigest),
             fresh.toString(), excluded.sortedBy { it.name }.toString(), generation.toString()).joinToString("\u0001")
         if (!fresh) results.get(key)?.let { return ReadResult(it) }
         val loaded = try { lock.load(key) {
-            val result = loadPlayer(videoId, context, http, script, scopedSolver, scopedTokens, queues, excluded, now, preference)
+            val result = loadPlayer(videoId, context, http, activeScript, scopedSolver, scopedTokens, queues, excluded, now, preference)
             if (!result.ok) PlaybackLoad(PlaybackForm.VOD, null, Playback(null, null, null), error = result.error)
             else {
                 val player = result.value!!
