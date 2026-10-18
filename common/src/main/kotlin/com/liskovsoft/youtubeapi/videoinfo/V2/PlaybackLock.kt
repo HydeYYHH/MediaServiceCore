@@ -40,24 +40,22 @@ class PlaybackLock {
     }
 
     private class Slot {
-        private var done = false
+        private val done = java.util.concurrent.CountDownLatch(1)
         private var result: PlaybackLoad? = null
         private var error: Throwable? = null
 
-        fun succeed(value: PlaybackLoad) = synchronized(this) {
+        fun succeed(value: PlaybackLoad) {
             result = value
-            done = true
-            (this as java.lang.Object).notifyAll()
+            done.countDown()
         }
 
-        fun fail(failure: Throwable) = synchronized(this) {
+        fun fail(failure: Throwable) {
             error = failure
-            done = true
-            (this as java.lang.Object).notifyAll()
+            done.countDown()
         }
 
-        fun await(): PlaybackLoad = synchronized(this) {
-            while (!done) (this as java.lang.Object).wait()
+        fun await(): PlaybackLoad {
+            done.await()
             val failure = error
             if (failure != null) throw failure
             return result!!
