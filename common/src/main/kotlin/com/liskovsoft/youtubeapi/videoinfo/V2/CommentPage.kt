@@ -30,7 +30,7 @@ data class Comment(
     val disliked: Boolean
 )
 
-data class CommentPage(val comments: List<Comment>, val nextKey: String?, val createKey: String?)
+data class CommentPage(val comments: List<Comment>, val nextKey: String?, val createKey: String?, val sortOptions: List<CommentSort> = emptyList())
 
 private val emptyPage = CommentPage(emptyList(), null, null)
 
@@ -53,15 +53,10 @@ fun commentKey(body: String): String? {
 
 fun commentPage(body: String): CommentPage {
     val root = jsonObject(body) ?: return emptyPage
-    val section = root.obj("continuationContents")?.obj("itemSectionContinuation") ?: return emptyPage
+    val section = commentSection(root)
     val comments = ArrayList<Comment>()
-    val contents = section.fields["contents"] as? Json.Arr
-    if (contents != null) {
-        for (item in contents.items) {
-            val renderer = (item as? Json.Obj)
-                ?.obj("commentThreadRenderer")
-                ?.obj("comment")
-                ?.obj("commentRenderer") ?: continue
+    run {
+        for (renderer in commentRenderers(root, section)) {
             val runs = contentRuns(renderer.obj("contentText"))
             comments.add(Comment(
                 renderer.text("commentId")?.takeIf { it.isNotEmpty() },
@@ -84,7 +79,7 @@ fun commentPage(body: String): CommentPage {
         }
     }
     val createKey = headerCreateKey(section) ?: firstNamed(root, "createCommentParams")
-    return CommentPage(comments, sectionContinuation(section), createKey)
+    return CommentPage(comments, sectionContinuation(section) ?: commentNextKey(section), createKey, commentSortOptions(root))
 }
 
 fun loadComments(

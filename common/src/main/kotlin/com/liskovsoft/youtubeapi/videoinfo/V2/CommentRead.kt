@@ -1,0 +1,59 @@
+package com.liskovsoft.youtubeapi.videoinfo.V2
+
+data class CommentSort(val title: String?, val key: String, val selected: Boolean)
+internal fun commentSection(root: Json.Obj): Json.Obj {
+    val old = root.obj("continuationContents")
+    old?.obj("itemSectionContinuation")?.let { return it }
+    old?.obj("commentRepliesContinuation")?.let { return it }
+    val actions = root.objects("appendContinuationItemsAction") + root.objects("reloadContinuationItemsCommand")
+    if (actions.isEmpty()) return root
+    return Json.Obj(mapOf("contents" to Json.Arr(actions.flatMap { it.arr("continuationItems") })))
+}
+internal fun commentRenderers(root: Json.Obj, section: Json.Obj): List<Json.Obj> {
+    val threads = section.objects("commentThreadRenderer")
+    val legacy = section.objects("commentRenderer").map { renderer ->
+        val thread = threads.firstOrNull { it.path("comment", "commentRenderer") === renderer }
+        val replies = thread?.obj("replies")
+        if (replies != null && renderer.obj("replies") == null) Json.Obj(renderer.fields + ("replies" to replies)) else renderer
+    }
+    val modern = root.objects("commentEntityPayload").map { entity ->
+        val p = entity.obj("properties")
+        val author = entity.obj("author")
+        fun str(value: String?) = if (value == null) Json.Null else Json.Str(value)
+        fun display(value: String?) = Json.Obj(mapOf("simpleText" to str(value)))
+        Json.Obj(mapOf("commentId" to str(p?.text("commentId")), "authorText" to display(author?.text("displayName")),
+            "contentText" to display(p?.obj("content")?.text("content")), "publishedTimeText" to display(p?.text("publishedTime")),
+            "voteCount" to display(entity.obj("toolbar")?.text("likeCountNotliked"))))
+    }
+    return (legacy + modern).distinctBy { it.text("commentId") ?: it.encode() }
+}
+internal fun commentSortOptions(root: Json.Obj): List<CommentSort> =
+    root.objects("sortFilterSubMenuRenderer").flatMap { it.arr("subMenuItems") }.mapNotNull { it as? Json.Obj }.mapNotNull {
+        val endpoint = it.obj("serviceEndpoint") ?: it.obj("navigationEndpoint")
+        val key = endpoint?.objects("continuationCommand")?.firstOrNull()?.text("token") ?: return@mapNotNull null
+        CommentSort(it.text("title"), key, it.bool("selected") == true)
+    }
+internal fun commentNextKey(section: Json.Obj): String? =
+    section.arr("contents").mapNotNull { (it as? Json.Obj)?.obj("continuationItemRenderer")?.let(::pageKey) }.firstOrNull()
+fun loadComments(videoId: String, context: RequestContext, continuation: String? = null, http: HttpClient = JvmHttpClient()): ReadResult<CommentPage> {
+    if (!videoIdAccepted(videoId)) return ReadResult(error = RequestError(RequestFailure.INVALID, "invalid_video_id"))
+    var key = continuation
+    var opened: Json.Obj? = null
+    if (key == null) {
+        val first = requestObject(youtubeQuery(YOUTUBE_API + "next", payload("videoId" to videoId), context), http)
+        if (!first.ok) return ReadResult(error = first.error)
+        opened = first.value!!
+        key = commentKey(opened.encode())
+        if (key == null) return ReadResult(CommentPage(emptyList(), null, null, commentSortOptions(opened)))
+    }
+    val response = requestObject(youtubeQuery(YOUTUBE_API + "next", payload("continuation" to key), context), http)
+    if (!response.ok) return ReadResult(error = response.error)
+    var page = commentPage(response.value!!.encode())
+    if (opened != null && page.sortOptions.isEmpty()) page = page.copy(sortOptions = commentSortOptions(opened))
+    return ReadResult(page)
+}
+fun loadCommentReplies(replyKey: String, context: RequestContext = RequestContext(), http: HttpClient = JvmHttpClient()): ReadResult<CommentPage> {
+    if (replyKey.isBlank()) return ReadResult(error = RequestError(RequestFailure.INVALID, "missing_reply_key"))
+    val response = requestObject(youtubeQuery(YOUTUBE_API + "next", payload("continuation" to replyKey), context), http)
+    return if (response.ok) ReadResult(commentPage(response.value!!.encode())) else ReadResult(error = response.error)
+}
