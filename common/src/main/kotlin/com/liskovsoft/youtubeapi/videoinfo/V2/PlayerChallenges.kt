@@ -21,7 +21,7 @@ internal fun openBoundFormats(answer:PlayerAnswer,script:PlayerScript?,solver:Pl
 }
 class CachedPlayerSolver(private val delegate:PlayerSolver,private val cache:PlaybackCache=MemoryPlaybackCache()):PlayerSolver {
     override fun solve(request:PlayerChallengeRequest):PlayerChallenge {
-        val hash=java.security.MessageDigest.getInstance("SHA-256").digest(request.script.source.toByteArray(Charsets.UTF_8)).joinToString(""){"%02x".format(it.toInt() and 255)}
+        val hash = textDigest(request.script.source)
         val key=request.script.url+"\n"+hash
         val signatures=request.signatures.mapNotNull{value->cache.signature(key,value)?.let{value to it}}.toMap()
         val throttles=request.throttles.mapNotNull{value->cache.throttle(key,value)?.let{value to it}}.toMap()
@@ -38,11 +38,13 @@ class CachedPlayerTokens(private val delegate:PlayerTokenProvider,capacity:Int=1
     private val now:()->Long=System::currentTimeMillis):PlayerTokenProvider {
     private data class Key(val client:PlayerClient,val video:String,val scope:String,val purpose:TokenPurpose)
     private val cache=TimedCache<Key,PlayerToken>(capacity,now)
+    fun clear() = cache.clear()
     override fun token(request:PlayerTokenRequest):PlayerToken? {
         val key=Key(request.client,request.videoId,request.context.scope(),request.purpose)
         cache.get(key)?.let{return it}
+        val generation = cache.generation()
         val token=delegate.token(request)?.takeIf{it.value.isNotBlank()&&it.expiresAtMs>now()} ?: return null
-        cache.put(key,token,token.expiresAtMs-now())
+        cache.put(key,token,token.expiresAtMs-now(),generation)
         return token
     }
 }
