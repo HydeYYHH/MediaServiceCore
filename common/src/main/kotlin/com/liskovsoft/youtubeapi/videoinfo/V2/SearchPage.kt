@@ -62,5 +62,10 @@ fun searchQuery(text: String?, context: RequestContext = RequestContext(), param
 fun loadSearch(text: String?, context: RequestContext = RequestContext(), params: String? = null, continuation: String? = null,
     http: HttpClient = JvmHttpClient()): ReadResult<SearchPage> {
     val reply = requestObject(searchQuery(text, context, params, continuation), http)
+    // SearchService2.getSearch, upstream 6c02bd1b: a retry owns a fresh execution.
+    if (!reply.ok && reply.error?.kind == RequestFailure.AUTH && context.accessToken != null) {
+        val retry = requestObject(searchQuery(text, context.anonymous(), params, continuation), http)
+        return if (retry.ok) ReadResult(searchPage(retry.value!!.encode())) else ReadResult(error = retry.error)
+    }
     return if (reply.ok) ReadResult(searchPage(reply.value!!.encode())) else ReadResult(error = reply.error)
 }
