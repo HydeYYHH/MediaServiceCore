@@ -52,7 +52,7 @@ fun commentQuery(videoId: String?, continuation: String?, visitor: String?): Pla
 fun commentKey(body: String): String? {
     val root = jsonObject(body) ?: return null
     val panel = findPanel(root) ?: return null
-    return firstToken(panel)
+    return pageKey(panel)
 }
 
 fun commentPage(body: String): CommentPage {
