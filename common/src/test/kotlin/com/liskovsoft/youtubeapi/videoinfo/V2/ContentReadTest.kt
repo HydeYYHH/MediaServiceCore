@@ -22,4 +22,12 @@ class ContentReadTest {
         val body = """{"contents":[{"richShelfRenderer":{"title":"First","contents":[{"videoRenderer":{"videoId":"a"}}]}},{"shelfRenderer":{"title":"Second","contents":[{"videoRenderer":{"videoId":"b"}}]}},{"itemSectionRenderer":{"contents":[{"shelfRenderer":{"title":"Third","contents":[{"videoRenderer":{"videoId":"c"}}]}}]}}]}"""
         assertEquals(listOf("First", "Second", "Third"), searchPage(body).groups.map { it.title })
     }
+
+    @Test fun keepsPlaylistIdentityWhenALockupAlsoHasAFirstVideo() {
+        val body = """{"lockupViewModel":{"contentId":"PLlist","contentType":"LOCKUP_CONTENT_TYPE_PLAYLIST","rendererContext":{"commandContext":{"onTap":{"innertubeCommand":{"watchEndpoint":{"videoId":"first","playlistId":"PLlist"}}}}}}}"""
+        val item = searchPage(body).items.single()
+        assertEquals("playlist", item.kind)
+        assertEquals("PLlist", item.id)
+        assertEquals("PLlist", item.playlistId)
+    }
 }
