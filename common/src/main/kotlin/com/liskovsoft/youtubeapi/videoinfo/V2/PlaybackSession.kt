@@ -32,7 +32,10 @@ class PlaybackSession(private val http: HttpClient = JvmHttpClient(), private va
             Thread.currentThread().interrupt()
             return ReadResult(error = RequestError(RequestFailure.CANCELLED, "cancelled"))
         }
-        if (loaded.error == null) results.put(key, loaded, minOf(45000L, loaded.answer?.expiresInSeconds?.times(1000) ?: 45000L), generation)
+        if (loaded.error == null) {
+            val lifetime = loaded.answer?.expiresAtMs?.minus(now()) ?: 45000L
+            results.put(key, loaded, minOf(45000L, lifetime), generation)
+        }
         return if (loaded.error != null) ReadResult(error = loaded.error) else ReadResult(loaded)
     }
 }

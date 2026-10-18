@@ -17,14 +17,20 @@ fun loadPlayer(videoId: String, context: RequestContext, http: HttpClient = JvmH
     var answer: PlayerAnswer? = null
     var lastError: RequestError? = null
     val signIn = if (context.accessToken == null) SignIn.SIGNED_OUT else SignIn.SIGNED_IN
-    fun token(client: PlayerClient, purpose: TokenPurpose): String? =
-        tokens?.token(PlayerTokenRequest(client, videoId, context, purpose))?.takeIf { it.expiresAtMs > now() }?.value
+    var tokenDeadline: Long? = null
+    fun token(client: PlayerClient, purpose: TokenPurpose): String? {
+        val value = tokens?.token(PlayerTokenRequest(client, videoId, context, purpose))
+            ?.takeIf { it.value.isNotBlank() && it.expiresAtMs > now() } ?: return null
+        tokenDeadline = minOf(tokenDeadline ?: Long.MAX_VALUE, value.expiresAtMs)
+        return value.value
+    }
     val result = PlayerAttempt(queues).run(signIn) { client ->
         if (Thread.currentThread().isInterrupted) {
             lastError = RequestError(RequestFailure.CANCELLED, "cancelled")
             return@run PlayerAnswer(true, null, null, false, false, false, false)
         }
         if (client in excluded) return@run PlayerAnswer(true, null, null, false, false, false, false)
+        tokenDeadline = null
         val identity = if (client == PlayerClient.TV) context else context.anonymous()
         var query = contextualQuery(playerQuery(client, videoId, identity.visitor, script?.let { signatureTimestamp(it.source) }), identity)
         try {
@@ -38,6 +44,7 @@ fun loadPlayer(videoId: String, context: RequestContext, http: HttpClient = JvmH
                 lastError = response.error
                 return@run PlayerAnswer(true, null, null, false, false, false, false)
             }
+            val receivedAt = now()
             var fetched = playerAnswer(response.value!!.encode())
             fetched = openBoundFormats(fetched, script, solver)
             val mediaPot = token(client, TokenPurpose.MEDIA)
@@ -52,6 +59,12 @@ fun loadPlayer(videoId: String, context: RequestContext, http: HttpClient = JvmH
             if (subtitlePot != null) fetched = fetched.copy(captions = fetched.captions.map {
                 it.copy(url = it.url?.let { url -> urlWithParameter(url, "pot", subtitlePot) })
             })
+            val deadlines = listOfNotNull(tokenDeadline, fetched.expiresInSeconds?.let { receivedAt + it.coerceIn(0, 31536000) * 1000 })
+            fetched = fetched.copy(expiresAtMs = deadlines.min())
+            if (fetched.expiresAtMs?.let { it <= now() } == true) {
+                lastError = RequestError(RequestFailure.UNSUPPORTED, "expired_player_source")
+                return@run PlayerAnswer(false, null, null, false, false, false, fetched.live)
+            }
             answer = fetched
             if (!selectPlayback(fetched, preference).hasSource()) {
                 lastError = RequestError(RequestFailure.UNSUPPORTED, "no_matching_format")
