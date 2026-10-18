@@ -9,7 +9,7 @@ private fun stableGroupId(format: GroupFormat, title: String) = java.util.UUID.n
 // PocketTubeService / NewPipeService / GrayJayService, upstream 7c2451ea, channelgroups/importing.
 fun readChannelGroups(text: String, format: GroupFormat? = null,
     resolve: ((String) -> String?)? = null): ReadResult<List<ChannelGroup>> {
-    var root = jsonValue(text) ?: return ReadResult(error = RequestError(RequestFailure.PARSE, "invalid_group_export"))
+    var root = jsonValue(text.removePrefix("\uFEFF")) ?: return ReadResult(error = RequestError(RequestFailure.PARSE, "invalid_group_export"))
     if (root is Json.Str) root = jsonValue(root.value) ?: return ReadResult(error = RequestError(RequestFailure.PARSE, "invalid_group_export"))
     val objectRoot = root as? Json.Obj
     val selected = format ?: when {
@@ -25,7 +25,11 @@ fun readChannelGroups(text: String, format: GroupFormat? = null,
         if (!id.startsWith("UC") || !videoIdAccepted(id)) throw GroupEnd("invalid_channel_id")
         return GroupChannel(id, title, null)
     }
-    fun channels(values: List<Json>) = values.map { channel((it as? Json.Str)?.value ?: throw GroupEnd("invalid_channel_url")) }.distinctBy { it.id }
+    fun channels(values: List<Json>, youtubeOnly: Boolean = false) = values.mapNotNull {
+        val value = (it as? Json.Str)?.value ?: throw GroupEnd("invalid_channel_url")
+        val host = try { java.net.URI(value).host } catch (_: Exception) { null }
+        if (youtubeOnly && host != null && host !in youtubeHosts) null else channel(value)
+    }.distinctBy { it.id }
     return try {
         val groups = when (selected) {
             GroupFormat.POCKETTUBE -> {
@@ -51,7 +55,7 @@ fun readChannelGroups(text: String, format: GroupFormat? = null,
                 val title = group.text("name") ?: throw GroupEnd("missing_group_title")
                 val urls = group.fields["urls"] as? Json.Arr ?: throw GroupEnd("missing_group_channels")
                 ChannelGroup(group.scalar("id")?.takeIf { it.isNotBlank() } ?: stableGroupId(selected, title), title,
-                    group.obj("image")?.text("url"), channels(urls.items))
+                    group.obj("image")?.text("url"), channels(urls.items, youtubeOnly = true))
             }
             GroupFormat.MSC -> emptyList()
         }
@@ -64,10 +68,11 @@ fun readChannelGroups(text: String, format: GroupFormat? = null,
     } catch (_: Exception) { ReadResult(error = RequestError(RequestFailure.TRANSPORT, "channel_resolution_failed")) }
 }
 
+private val youtubeHosts = setOf("youtube.com", "www.youtube.com", "m.youtube.com", "music.youtube.com")
 private fun channelIdFromUrl(value: String): String? {
     if (value.startsWith("UC") && videoIdAccepted(value)) return value
     val uri = try { java.net.URI(value) } catch (_: Exception) { return null }
-    if (uri.host !in setOf("youtube.com", "www.youtube.com", "m.youtube.com", "music.youtube.com")) return null
+    if (uri.host !in youtubeHosts) return null
     val parts = uri.path.orEmpty().trim('/').split('/')
     return parts.getOrNull(1)?.takeIf { parts.firstOrNull() == "channel" && it.startsWith("UC") && videoIdAccepted(it) }
 }

@@ -14,6 +14,7 @@ class ChannelGroupReadTest {
             assertTrue(name + ": " + first.error, first.ok)
             assertTrue(first.value!!.flatMap { it.channels }.isNotEmpty())
             assertEquals(first.value, readChannelGroups(text).value)
+            assertEquals(first.value, readChannelGroups("\uFEFF" + text).value)
             val groups = ChannelGroups()
             assertTrue(groups.import(text).ok)
             assertTrue(groups.import(text).ok)
@@ -30,5 +31,10 @@ class ChannelGroupReadTest {
         assertFalse(groups.import("{\"ysc_collection\":{\"Broken\":\"icon\"}}", replace = true).ok)
         assertEquals(parsed, groups.read())
         assertFalse(readChannelGroups("{bad}").ok)
+    }
+
+    @Test fun ignoresOtherPlatformsInAMixedGrayJayGroup() {
+        val text = """[{"id":"group","name":"Mixed","urls":["https://www.youtube.com/channel/UCone","https://vimeo.com/creator"]}]"""
+        assertEquals(listOf("UCone"), readChannelGroups(text).value!!.single().channels.map { it.id })
     }
 }
