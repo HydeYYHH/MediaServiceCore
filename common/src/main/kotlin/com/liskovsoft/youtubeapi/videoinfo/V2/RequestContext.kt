@@ -10,9 +10,14 @@ data class RequestContext(
     val generation: Long = 0, val onBehalfOfUser: String? = null
 ) {
     fun anonymous() = copy(accountId = null, accessToken = null, onBehalfOfUser = null)
-    internal fun scope() = listOf(accountId, visitor, generation.toString(), onBehalfOfUser).joinToString("\u0000") { if (it == null) "-" else it.length.toString() + ":" + it }
+    internal fun scope() = listOf(accountId, accessToken?.let(::textDigest), visitor, language, region,
+        generation.toString(), onBehalfOfUser).joinToString("\u0000") {
+        if (it == null) "-" else it.length.toString() + ":" + it
+    }
     override fun toString() = "RequestContext(language=$language, region=$region, generation=$generation)"
 }
+internal fun textDigest(text: String): String = java.security.MessageDigest.getInstance("SHA-256")
+    .digest(text.toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it.toInt() and 255) }
 data class HttpRequest(val method: String, val url: String, val headers: Map<String, String> = emptyMap(), val body: String = "")
 data class HttpReply(val status: Int, val body: String, val headers: Map<String, String> = emptyMap()) {
     fun header(name: String) = headers.entries.firstOrNull { it.key.equals(name, true) }?.value
