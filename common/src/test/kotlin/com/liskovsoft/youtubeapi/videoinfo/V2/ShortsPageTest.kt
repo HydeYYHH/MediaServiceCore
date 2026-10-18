@@ -13,6 +13,9 @@ class ShortsPageTest {
             assertTrue(name, page.items.isNotEmpty())
             assertTrue(page.items.all { it.kind == "short" && it.thumbnail != null })
             assertEquals("fixture-sequence", page.nextKey)
+            assertEquals("fixture-player", page.items.first().playerParams)
+            assertEquals("fixture-reel", page.items.first().params)
+            assertEquals("reelWatchEndpoint", page.items.first().endpoint!!.name)
         }
     }
 

@@ -12,7 +12,9 @@
           }
         ],
         "isOriginalAspectRatio": true
-      }
+      },
+      "playerParams": "fixture-player",
+      "params": "fixture-reel"
     }
   },
   "sequenceContinuation": "fixture-sequence"

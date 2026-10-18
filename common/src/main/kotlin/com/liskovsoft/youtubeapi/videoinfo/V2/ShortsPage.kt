@@ -14,7 +14,8 @@ fun shortsPage(body: String): BrowsePage {
             if (endpoint === first) header?.display("channelTitleText") else null,
             endpoint.thumbnail("thumbnail"), null,
             if (endpoint === first) header?.path("channelNavigationEndpoint", "browseEndpoint")?.text("browseId") else null,
-            params = endpoint.text("params"))
+            params = endpoint.text("params"), endpoint = actionEndpoint(Json.Obj(mapOf("reelWatchEndpoint" to endpoint))),
+            playerParams = endpoint.text("playerParams"))
     }.distinctBy { it.id }
     val next = root.text("sequenceContinuation") ?: root.text("continuation")
         ?: root.path("continuationEndpoint", "continuationCommand")?.text("token")
