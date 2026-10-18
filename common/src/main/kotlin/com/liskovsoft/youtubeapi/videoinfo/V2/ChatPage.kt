@@ -6,7 +6,7 @@ sealed class ChatAction {
     data class Add(val message: ChatMessage) : ChatAction()
     data class Remove(val removal: ChatRemoval) : ChatAction()
 }
-data class ChatPage(val messages: List<ChatMessage>, val removals: List<ChatRemoval>, val nextKey: String?, val waitMs: Long,
+data class ChatPage @JvmOverloads constructor(val messages: List<ChatMessage>, val removals: List<ChatRemoval>, val nextKey: String?, val waitMs: Long,
     val actions: List<ChatAction> = emptyList(), val events: List<ChatEvent> = emptyList(), val replay: Boolean = false)
 fun chatPage(body: String): ChatPage {
     val root = jsonObject(body)

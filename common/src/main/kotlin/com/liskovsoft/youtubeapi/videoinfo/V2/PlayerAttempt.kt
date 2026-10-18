@@ -31,7 +31,7 @@ private fun isBotCheck(reason: String?): Boolean {
     return text.contains("not a bot") || text.contains("unusual traffic")
 }
 
-data class PlayerAnswer(
+data class PlayerAnswer @JvmOverloads constructor(
     val transportFailed: Boolean,
     val status: String?,
     val reason: String?,
@@ -53,7 +53,7 @@ data class PlayerAnswer(
     val expiresAtMs: Long? = null
 )
 
-data class PlayerFormat(
+data class PlayerFormat @JvmOverloads constructor(
     val itag: Int?,
     val mimeType: String?,
     val url: String?,

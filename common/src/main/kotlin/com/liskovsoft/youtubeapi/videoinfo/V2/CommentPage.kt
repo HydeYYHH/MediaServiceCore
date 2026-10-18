@@ -2,7 +2,7 @@ package com.liskovsoft.youtubeapi.videoinfo.V2
 
 private const val NEXT_URL = "https://www.youtube.com/youtubei/v1/next?prettyPrint=false"
 
-data class CommentRun(
+data class CommentRun @JvmOverloads constructor(
     val text: String,
     val url: String?,
     val videoId: String?,
@@ -12,7 +12,7 @@ data class CommentRun(
     val bold: Boolean = false, val italic: Boolean = false, val strikethrough: Boolean = false
 )
 
-data class Comment(
+data class Comment @JvmOverloads constructor(
     val id: String?,
     val author: String?,
     val text: String?,

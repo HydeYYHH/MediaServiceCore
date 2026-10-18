@@ -1,6 +1,6 @@
 package com.liskovsoft.youtubeapi.videoinfo.V2
 
-data class PlaybackPreference(val maxHeight: Int = Int.MAX_VALUE, val mimeTypes: Set<String> = emptySet(),
+data class PlaybackPreference @JvmOverloads constructor(val maxHeight: Int = Int.MAX_VALUE, val mimeTypes: Set<String> = emptySet(),
     val audioId: String? = null, val audioLanguage: String? = null, val audioOnly: Boolean = false,
     val videoCodecs: Set<String> = emptySet(), val audioCodecs: Set<String> = emptySet(),
     val maxFps: Int = Int.MAX_VALUE, val dynamicRange: VideoRange? = null)

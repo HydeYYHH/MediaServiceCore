@@ -31,6 +31,7 @@ class ChannelGroups(initial:List<ChannelGroup> = emptyList(),private val save:(L
         }
         return "{\"version\":1,\"groups\":[$items]}"
     }
+    @JvmOverloads
     @Synchronized fun import(text:String,replace:Boolean=false,format:GroupFormat?=null,
         resolve:((String)->String?)?=null):ReadResult<List<ChannelGroup>> {
         val root=jsonObject(text)
