@@ -102,21 +102,5 @@ private fun firstParam(command: Json.Arr): String? {
     return null
 }
 
-private fun encode(value: String): String {
-    val out = StringBuilder()
-    for (c in value) {
-        val plain = c in 'A'..'Z' || c in 'a'..'z' || c in '0'..'9' || c == '-' || c == '_' || c == '.' || c == '~'
-        if (plain) {
-            out.append(c)
-            continue
-        }
-        val bytes = c.toString().toByteArray(Charsets.UTF_8)
-        for (b in bytes) {
-            val hex = b.toInt() and 0xff
-            out.append('%')
-            out.append(HEX[hex ushr 4])
-            out.append(HEX[hex and 0x0f])
-        }
-    }
-    return out.toString()
-}
+private fun encode(value: String): String = java.net.URLEncoder.encode(value, "UTF-8").replace("+", "%20")
+

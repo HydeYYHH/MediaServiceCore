@@ -54,7 +54,8 @@ fun stateQuery(
     positionMs: Long,
     durationMs: Long,
     state: Int,
-    ofs: Int
+    ofs: Int,
+    cpn: String = "foo"
 ): PlayerQuery {
     val url = reportUrl(screenName, deviceId, loungeToken, sessionId, gSessionId)
     if (url.isEmpty()) return PlayerQuery("", emptyMap(), "")
@@ -65,7 +66,7 @@ fun stateQuery(
     fields.add(Pair("ofs", ofs.toString()))
     fields.add(Pair("req0__sc", "onStateChange"))
     fields.add(Pair("req0_state", state.toString()))
-    fields.add(Pair("req0_cpn", "foo"))
+    fields.add(Pair("req0_cpn", cpn))
     addTime(fields, position, durationMs)
     return formQuery(url, fields)
 }
@@ -124,7 +125,9 @@ fun previousNextQuery(
     loungeToken: String?,
     sessionId: String?,
     gSessionId: String?,
-    ofs: Int
+    ofs: Int,
+    hasPrevious: Boolean = false,
+    hasNext: Boolean = false
 ): PlayerQuery {
     val url = reportUrl(screenName, deviceId, loungeToken, sessionId, gSessionId)
     if (url.isEmpty()) return PlayerQuery("", emptyMap(), "")
@@ -132,8 +135,8 @@ fun previousNextQuery(
     fields.add(Pair("count", "1"))
     fields.add(Pair("ofs", ofs.toString()))
     fields.add(Pair("req0__sc", "onHasPreviousNextChanged"))
-    fields.add(Pair("req0_hasPrevious", "false"))
-    fields.add(Pair("req0_hasNext", "false"))
+    fields.add(Pair("req0_hasPrevious", hasPrevious.toString()))
+    fields.add(Pair("req0_hasNext", hasNext.toString()))
     addTime(fields, -1, -1)
     return formQuery(url, fields)
 }
@@ -412,21 +415,5 @@ private fun formBody(fields: List<Pair<String, String>>): String {
     return out.toString()
 }
 
-private fun encode(value: String): String {
-    val out = StringBuilder()
-    for (c in value) {
-        val plain = c in 'A'..'Z' || c in 'a'..'z' || c in '0'..'9' || c == '-' || c == '_' || c == '.' || c == '~'
-        if (plain) {
-            out.append(c)
-            continue
-        }
-        val bytes = c.toString().toByteArray(Charsets.UTF_8)
-        for (b in bytes) {
-            val hex = b.toInt() and 0xff
-            out.append('%')
-            out.append(HEX[hex ushr 4])
-            out.append(HEX[hex and 0x0f])
-        }
-    }
-    return out.toString()
-}
+private fun encode(value: String): String = java.net.URLEncoder.encode(value, "UTF-8").replace("+", "%20")
+

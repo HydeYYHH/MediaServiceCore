@@ -50,6 +50,7 @@ class LoungeConnection(private val screenName: String, private val deviceId: Str
     private val requests = java.util.concurrent.atomic.AtomicInteger()
     init { require(screenName.isNotBlank() && deviceId.isNotBlank() && maxReconnects >= 0) }
     fun identity() = current
+    internal fun nextRequestId() = requests.incrementAndGet()
     override fun close() { closed = true; try { reader?.close() } catch (_: IOException) {} }
     fun listen(receive: (LoungeCommand) -> Unit): ReadResult<Boolean> {
         if (!running.compareAndSet(false,true)) return ReadResult(error=RequestError(RequestFailure.INVALID,"already_listening"))
