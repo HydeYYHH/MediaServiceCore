@@ -19,6 +19,10 @@ fun loadPlayer(videoId: String, context: RequestContext, http: HttpClient = JvmH
     fun token(client: PlayerClient, purpose: TokenPurpose): String? =
         tokens?.token(PlayerTokenRequest(client, videoId, context, purpose))?.takeIf { it.expiresAtMs > now() }?.value
     val result = PlayerAttempt(queues).run(signIn) { client ->
+        if (Thread.currentThread().isInterrupted) {
+            lastError = RequestError(RequestFailure.CANCELLED, "cancelled")
+            return@run PlayerAnswer(true, null, null, false, false, false, false)
+        }
         if (client in excluded) return@run PlayerAnswer(true, null, null, false, false, false, false)
         val identity = if (client == PlayerClient.TV) context else context.anonymous()
         var query = contextualQuery(playerQuery(client, videoId, identity.visitor, script?.let { signatureTimestamp(it.source) }), identity)
