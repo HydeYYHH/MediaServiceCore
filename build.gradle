@@ -14,7 +14,7 @@ buildscript {
     }
 }
 
-if (sharedSettings != null) {
+if (findProperty('includeLegacyModules') == 'true' && sharedSettings != null) {
     buildscript.repositories.google()
     buildscript.repositories.jcenter()
     buildscript.dependencies.add('classpath', 'com.android.tools.build:gradle:3.3.1')
@@ -26,7 +26,7 @@ allprojects {
     }
 }
 
-if (sharedSettings != null) {
+if (findProperty('includeLegacyModules') == 'true' && sharedSettings != null) {
     allprojects {
         repositories {
             google()

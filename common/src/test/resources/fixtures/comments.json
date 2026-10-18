@@ -1,0 +1,252 @@
+{
+  "source": "youtubeapi/src/test/resources/chat_comments/2024.03.26_comments_new.json",
+  "items": [
+    {
+      "commentThreadRenderer": {
+        "comment": {
+          "commentRenderer": {
+            "authorText": {
+              "simpleText": "@SNAILKICK"
+            },
+            "authorThumbnail": {
+              "thumbnails": [
+                {
+                  "url": "https://yt3.ggpht.com/jBrxHYQE4AdIJd9CSIx9ta7n_6awb7xPscEjP5S1lHxSwBYT_G-Gq7WlCwBD6fb4HGYQp2Slaqk=s48-c-k-c0x00ffffff-no-rj",
+                  "width": 48,
+                  "height": 48
+                },
+                {
+                  "url": "https://yt3.ggpht.com/jBrxHYQE4AdIJd9CSIx9ta7n_6awb7xPscEjP5S1lHxSwBYT_G-Gq7WlCwBD6fb4HGYQp2Slaqk=s88-c-k-c0x00ffffff-no-rj",
+                  "width": 88,
+                  "height": 88
+                },
+                {
+                  "url": "https://yt3.ggpht.com/jBrxHYQE4AdIJd9CSIx9ta7n_6awb7xPscEjP5S1lHxSwBYT_G-Gq7WlCwBD6fb4HGYQp2Slaqk=s176-c-k-c0x00ffffff-no-rj",
+                  "width": 176,
+                  "height": 176
+                }
+              ],
+              "accessibility": {
+                "accessibilityData": {
+                  "label": "@SNAILKICK"
+                }
+              }
+            },
+            "contentText": {
+              "runs": [
+                {
+                  "text": "Все записи стримов с донатами и прочим появляются раньше на бусти - "
+                },
+                {
+                  "text": "https://boosty.to/snailkick",
+                  "navigationEndpoint": {
+                    "urlEndpoint": {
+                      "url": "https://boosty.to/snailkick",
+                      "target": "TARGET_NEW_WINDOW"
+                    }
+                  }
+                },
+                {
+                  "text": " , а чтобы быть в курсе есть ТГ - "
+                },
+                {
+                  "text": "https://t.me/snailkick",
+                  "navigationEndpoint": {
+                    "urlEndpoint": {
+                      "url": "https://t.me/snailkick",
+                      "target": "TARGET_NEW_WINDOW"
+                    }
+                  }
+                }
+              ]
+            },
+            "publishedTimeText": {
+              "simpleText": "11 days ago"
+            },
+            "isLiked": false,
+            "commentId": "UgwnTVpqdRks5k5Gxvl4AaABAg",
+            "voteStatus": "INDIFFERENT",
+            "voteCount": {
+              "accessibility": {
+                "accessibilityData": {
+                  "label": "6 likes"
+                }
+              },
+              "simpleText": "6"
+            },
+            "detailViewEndpoint": {
+              "showEngagementPanelEndpoint": {
+                "engagementPanel": {
+                  "engagementPanelSectionListRenderer": {
+                    "header": {
+                      "engagementPanelTitleHeaderRenderer": {
+                        "title": {
+                          "runs": [
+                            {
+                              "text": "Replies"
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    "content": {
+                      "sectionListRenderer": {
+                        "contents": [
+                          {
+                            "itemSectionRenderer": {
+                              "continuations": [
+                                {
+                                  "reloadContinuationData": {
+                                    "continuation": "fixture-key"
+                                  }
+                                }
+                              ],
+                              "sectionIdentifier": "comment-item-section"
+                            }
+                          }
+                        ]
+                      }
+                    },
+                    "veType": 159422
+                  }
+                },
+                "identifier": {
+                  "surface": "ENGAGEMENT_PANEL_SURFACE_WATCH",
+                  "tag": "comment-replies-item-section"
+                }
+              }
+            },
+            "pinnedCommentBadge": {
+              "pinnedCommentBadgeRenderer": {
+                "icon": {
+                  "iconType": "KEEP"
+                },
+                "label": {
+                  "runs": [
+                    {
+                      "text": "Pinned by "
+                    },
+                    {
+                      "text": "SNAILKICK"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "renderingPriority": "RENDERING_PRIORITY_PINNED_COMMENT",
+        "isModeratedElqComment": false
+      }
+    },
+    {
+      "commentThreadRenderer": {
+        "comment": {
+          "commentRenderer": {
+            "authorText": {
+              "simpleText": "@konokrad_2.0"
+            },
+            "authorThumbnail": {
+              "thumbnails": [
+                {
+                  "url": "https://yt3.ggpht.com/ytc/AIdro_lOl7GLrKnP1cvaXU6ZBCCWpbLM4nu1_3FQGIekwHzr65uY84DVbcQVWKnqoeL08A=s48-c-k-c0x00ffffff-no-rj",
+                  "width": 48,
+                  "height": 48
+                },
+                {
+                  "url": "https://yt3.ggpht.com/ytc/AIdro_lOl7GLrKnP1cvaXU6ZBCCWpbLM4nu1_3FQGIekwHzr65uY84DVbcQVWKnqoeL08A=s88-c-k-c0x00ffffff-no-rj",
+                  "width": 88,
+                  "height": 88
+                },
+                {
+                  "url": "https://yt3.ggpht.com/ytc/AIdro_lOl7GLrKnP1cvaXU6ZBCCWpbLM4nu1_3FQGIekwHzr65uY84DVbcQVWKnqoeL08A=s176-c-k-c0x00ffffff-no-rj",
+                  "width": 176,
+                  "height": 176
+                }
+              ],
+              "accessibility": {
+                "accessibilityData": {
+                  "label": "@konokrad_2.0"
+                }
+              }
+            },
+            "contentText": {
+              "runs": [
+                {
+                  "text": "Дед,если смотреть не в записи,то кто вместо нас будет тебе просмотры на ютабах поднимать? Окстись и извинись!"
+                }
+              ]
+            },
+            "publishedTimeText": {
+              "simpleText": "11 days ago"
+            },
+            "isLiked": false,
+            "commentId": "UgyX5kyNAHCubRz_Swd4AaABAg",
+            "voteStatus": "INDIFFERENT",
+            "voteCount": {
+              "accessibility": {
+                "accessibilityData": {
+                  "label": "845 likes"
+                }
+              },
+              "simpleText": "845"
+            },
+            "detailViewEndpoint": {
+              "showEngagementPanelEndpoint": {
+                "engagementPanel": {
+                  "engagementPanelSectionListRenderer": {
+                    "header": {
+                      "engagementPanelTitleHeaderRenderer": {
+                        "title": {
+                          "runs": [
+                            {
+                              "text": "Replies"
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    "content": {
+                      "sectionListRenderer": {
+                        "contents": [
+                          {
+                            "itemSectionRenderer": {
+                              "continuations": [
+                                {
+                                  "reloadContinuationData": {
+                                    "continuation": "fixture-key"
+                                  }
+                                }
+                              ],
+                              "sectionIdentifier": "comment-item-section"
+                            }
+                          }
+                        ]
+                      }
+                    },
+                    "veType": 159422
+                  }
+                },
+                "identifier": {
+                  "surface": "ENGAGEMENT_PANEL_SURFACE_WATCH",
+                  "tag": "comment-replies-item-section"
+                }
+              }
+            },
+            "replyCount": 25,
+            "repliesCount": {
+              "accessibility": {
+                "accessibilityData": {
+                  "label": "25 replies"
+                }
+              },
+              "simpleText": "25"
+            }
+          }
+        },
+        "renderingPriority": "RENDERING_PRIORITY_UNKNOWN",
+        "isModeratedElqComment": false
+      }
+    }
+  ]
+}

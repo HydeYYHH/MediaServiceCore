@@ -115,4 +115,3 @@ private fun cachedSolve(
         PlayerChallenge(knownSignatures + fresh.signatures, knownThrottles + fresh.throttles)
     }
 }
-

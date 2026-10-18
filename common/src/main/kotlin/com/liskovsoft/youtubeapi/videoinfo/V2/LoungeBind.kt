@@ -103,4 +103,3 @@ private fun firstParam(command: Json.Arr): String? {
 }
 
 private fun encode(value: String): String = java.net.URLEncoder.encode(value, "UTF-8").replace("+", "%20")
-

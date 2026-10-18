@@ -4,6 +4,7 @@ include ':common'
 def sharedSettings = ['../SharedModules/core_settings.gradle', 'SharedModules/core_settings.gradle']
         .collect { new File(settingsDir, it) }
         .find { it.exists() }
-if (sharedSettings != null) {
+if (startParameter.projectProperties['includeLegacyModules'] == 'true') {
+    if (sharedSettings == null) throw new GradleException('SharedModules is required for includeLegacyModules')
     apply from: 'core_settings.gradle'
 }

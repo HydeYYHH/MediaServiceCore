@@ -20,3 +20,30 @@ dependencies {
 
 sourceCompatibility = JavaVersion.VERSION_1_8
 targetCompatibility = JavaVersion.VERSION_1_8
+
+compileKotlin.kotlinOptions.jvmTarget = '1.8'
+compileTestKotlin.kotlinOptions.jvmTarget = '1.8'
+
+sourceSets {
+    consumer {
+        java.srcDir 'src/consumer/java'
+        compileClasspath = files(jar.archivePath) + configurations.runtimeClasspath
+        runtimeClasspath = output + compileClasspath
+    }
+}
+compileConsumerJava.dependsOn jar
+task verifyStandalone(type: JavaExec) {
+    dependsOn compileConsumerJava
+    classpath = sourceSets.consumer.runtimeClasspath
+    main = 'example.Standalone'
+}
+check.dependsOn verifyStandalone
+
+test { exclude '**/OnlineReadTest.class' }
+task onlineReadTest(type: Test) {
+    dependsOn testClasses
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    include '**/OnlineReadTest.class'
+    systemProperty 'msc.online', 'true'
+}
