@@ -4,11 +4,6 @@ data class MediaItem(val kind: String, val id: String, val title: String?, val a
     val duration: String?, val channelId: String? = null, val playlistId: String? = null, val params: String? = null)
 data class MediaGroup(val title: String?, val items: List<MediaItem>, val nextKey: String?)
 data class SearchPage(val items: List<MediaItem>, val groups: List<MediaGroup>, val nextKey: String?)
-internal fun pageKey(root: Json): String? {
-    return root.objects("continuationCommand").firstOrNull()?.text("token")
-        ?: root.objects("nextContinuationData").firstOrNull()?.text("continuation")
-        ?: root.objects("reloadContinuationData").firstOrNull()?.text("continuation")
-}
 internal fun contentItems(root: Json): List<MediaItem> {
     val items = ArrayList<MediaItem>()
     val types = mapOf("videoRenderer" to "video", "gridVideoRenderer" to "video", "compactVideoRenderer" to "video",
