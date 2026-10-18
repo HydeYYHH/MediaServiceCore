@@ -135,6 +135,7 @@ private fun sendPlaylist(query: PlayerQuery, post: (PlayerQuery) -> Pair<Int, St
         return failed
     }
     if (http.first != 200) return failed
+    if (http.second.isNotBlank() && jsonObject(http.second)?.let { actionReply(it).ok } != true) return failed
     val id = jsonObject(http.second)?.let { firstNamed(it, "playlistId") }
     return PlaylistWrite(true, id)
 }

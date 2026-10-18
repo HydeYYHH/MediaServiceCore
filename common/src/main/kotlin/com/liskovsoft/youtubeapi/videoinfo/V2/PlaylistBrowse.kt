@@ -10,7 +10,8 @@ data class PlaylistVideo(
     val author: String?,
     val length: String?,
     val index: String?,
-    val thumbnail: String?
+    val thumbnail: String?,
+    val setVideoId: String? = null
 )
 
 data class PlaylistPage(
@@ -77,7 +78,8 @@ private fun playlistVideo(renderer: Json.Obj, videoId: String): PlaylistVideo {
         displayText(renderer.obj("shortBylineText")) ?: displayText(renderer.obj("longBylineText")),
         displayText(renderer.obj("lengthText")),
         videoIndex(renderer),
-        firstThumbnail(renderer.obj("thumbnail"))
+        firstThumbnail(renderer.obj("thumbnail")),
+        renderer.text("setVideoId") ?: renderer.path("navigationEndpoint", "watchEndpoint")?.text("playlistSetVideoId")
     )
 }
 
