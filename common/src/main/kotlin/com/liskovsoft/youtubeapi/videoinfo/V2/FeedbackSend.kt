@@ -36,7 +36,7 @@ fun sendFeedback(
     return feedbackReply(http.second)
 }
 
-private fun feedbackReply(body: String): FeedbackReply {
+internal fun feedbackReply(body: String): FeedbackReply {
     val responses = jsonObject(body)?.fields?.get("feedbackResponses") as? Json.Arr ?: return emptyReply
     val first = responses.items.firstOrNull() as? Json.Obj ?: return emptyReply
     val dialog = first.obj("followUpDialog")?.obj("dismissalFollowUpRenderer")

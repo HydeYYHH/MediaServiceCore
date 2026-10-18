@@ -29,18 +29,9 @@ fun noticeQuery(visitor: String?): PlayerQuery {
 }
 
 fun notices(body: String): List<Notice> {
-    val actions = jsonObject(body)?.fields?.get("actions") as? Json.Arr ?: return emptyList()
-    val items = (actions.items.firstOrNull() as? Json.Obj)
-        ?.obj("openPopupAction")
-        ?.obj("popup")
-        ?.obj("multiPageMenuRenderer")
-        ?.fields?.get("sections") as? Json.Arr
-    val section = items?.items?.firstOrNull() as? Json.Obj ?: return emptyList()
-    val notes = section.obj("multiPageMenuNotificationSectionRenderer")?.fields?.get("items") as? Json.Arr
-        ?: return emptyList()
+    val root = jsonObject(body) ?: return emptyList()
     val parsed = ArrayList<Notice>()
-    for (item in notes.items) {
-        val renderer = (item as? Json.Obj)?.obj("notificationRenderer") ?: continue
+    for (renderer in root.objects("notificationRenderer")) {
         val message = displayText(renderer.obj("shortMessage"))
         val parts = splitMessage(message)
         parsed.add(Notice(
