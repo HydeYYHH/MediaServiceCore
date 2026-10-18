@@ -31,8 +31,14 @@ class ChannelGroups(initial:List<ChannelGroup> = emptyList(),private val save:(L
         }
         return "{\"version\":1,\"groups\":[$items]}"
     }
-    @Synchronized fun import(text:String,replace:Boolean=false):ReadResult<List<ChannelGroup>> {
+    @Synchronized fun import(text:String,replace:Boolean=false,format:GroupFormat?=null,
+        resolve:((String)->String?)?=null):ReadResult<List<ChannelGroup>> {
         val root=jsonObject(text)
+        if (format != GroupFormat.MSC && (format != null || root?.int("version") != 1)) {
+            val imported = readChannelGroups(text, format, resolve)
+            if (!imported.ok) return ReadResult(error = imported.error)
+            return import(ChannelGroups(imported.value!!).export(), replace, GroupFormat.MSC)
+        }
         if(root?.int("version")!=1 || root.fields["groups"] !is Json.Arr) return ReadResult(error=RequestError(RequestFailure.PARSE,"invalid_channel_groups"))
         val incoming=ArrayList<ChannelGroup>()
         for(item in root.arr("groups")){

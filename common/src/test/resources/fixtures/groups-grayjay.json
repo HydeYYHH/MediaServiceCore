@@ -1,0 +1,4 @@
+[
+  "{\"id\": \"fixture-group-1\", \"name\": \"Group1\", \"image\": {\"url\": \"https://image.example/group.png\"}, \"urls\": [\"https://www.youtube.com/channel/UCKEsuMNTAd1462h7ZtjM5aw\", \"https://www.youtube.com/channel/UCqdTuLTekIsdgaIKjwj4D-A\"]}",
+  "{\"id\": \"fixture-group-2\", \"name\": \"Group2\", \"image\": {\"url\": \"https://image.example/group.png\"}, \"urls\": [\"https://www.youtube.com/channel/UC73dVtWf9mpjiWYkXyIlm7A\", \"https://www.youtube.com/channel/UCpJWHeFjOjoDrHLIPqIHgwA\"]}"
+]

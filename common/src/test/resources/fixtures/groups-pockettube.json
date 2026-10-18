@@ -1,0 +1,15 @@
+{
+  "_source": "upstream@7c2451ea:channelgroups/pockettube.json",
+  "ysc_collection": {
+    "Group1": "fixture-icon",
+    "Group2": "fixture-icon"
+  },
+  "Group1": [
+    "UCyJTz74gyxWU2I5BzP6D71Q",
+    "UCL5J5tawwI7TELw1fstIMpQ"
+  ],
+  "Group2": [
+    "UCv19bD3h1dfYjVTj3v7R9yA",
+    "UCBgc_s9bZcC7_VPC7Qyegfw"
+  ]
+}
