@@ -22,10 +22,11 @@ internal fun preferredPlayback(answer: PlayerAnswer?, preference: PlaybackPrefer
     if (preference.audioOnly && audio != null) return Playback(null, null, audio.url)
     if (answer.live && answer.hlsUrl != null) return Playback(answer.hlsUrl, null, null)
     if (!preference.audioOnly && video != null && audio != null) return Playback(null, video.url, audio.url)
-    if (muxed != null) return Playback(null, muxed.url, null)
+    if (muxed != null) return if (preference.audioOnly) Playback(null, null, muxed.url) else Playback(null, muxed.url, null)
     if (answer.dashUrl != null) return Playback(null, null, null, dashUrl = answer.dashUrl)
     if (answer.hlsUrl != null) return Playback(answer.hlsUrl, null, null)
     if (answer.sabrUrl != null && answer.ustreamerConfig != null)
         return Playback(null, null, null, sabrUrl = answer.sabrUrl, ustreamerConfig = answer.ustreamerConfig)
-    return Playback(null, if (preference.audioOnly) null else video?.url, audio?.url)
+    return Playback(null, null, null)
 }
+internal fun Playback.hasSource() = listOf(hlsUrl, dashUrl, sabrUrl, videoUrl, audioUrl).any { !it.isNullOrBlank() }
