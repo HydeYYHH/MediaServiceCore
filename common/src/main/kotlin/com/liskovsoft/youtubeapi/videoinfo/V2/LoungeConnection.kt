@@ -68,11 +68,16 @@ class LoungeConnection(private val screenName: String, private val deviceId: Str
                     if (!response.ok) { failures++; continue }
                     val session = loungeSession(response.value!!,screenName,deviceId,screen.loungeToken)
                     if (session == null) { failures++; continue }
-                    val bindRows = jsonValue(response.value.substringAfter('\n',response.value)) as? Json.Arr
-                    val initial = bindRows?.items?.mapNotNull { ((it as? Json.Arr)?.items?.firstOrNull() as? Json.Num)?.text?.toLongOrNull() }?.max() ?: -1
-                    val frames = LoungeFrames(initial)
-                    current = LoungeIdentity(screenName,deviceId,screen,session,initial,requests.get())
-                    val listenUrl = urlWithParameter(session.listenUrl,"AID",maxOf(0,initial).toString())
+                    val text = response.value.trim()
+                    val firstLine = text.substringBefore('\n').trim()
+                    val frame = if (firstLine.isNotEmpty() && firstLine.all { it in '0'..'9' }) text.substringAfter('\n') else text
+                    val frames = LoungeFrames()
+                    val commands = frames.push(frame.length.toString() + "\n" + frame)
+                    frames.finish()
+                    current = LoungeIdentity(screenName,deviceId,screen,session,frames.lastId,requests.get())
+                    for (command in commands) { if (!closed) receive(command) }
+                    if (closed) break
+                    val listenUrl = urlWithParameter(session.listenUrl,"AID",maxOf(0,frames.lastId).toString())
                     val active = transport.open(HttpRequest("GET",listenUrl))
                     reader = active
                     if (closed) { active.close(); break }
