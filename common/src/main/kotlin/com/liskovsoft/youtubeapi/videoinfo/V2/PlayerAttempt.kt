@@ -49,7 +49,8 @@ data class PlayerAnswer(
     val ustreamerConfig: String? = null,
     val expiresInSeconds: Long? = null,
     val details: PlayerDetails? = null,
-    val captions: List<PlayerCaption> = emptyList()
+    val captions: List<PlayerCaption> = emptyList(),
+    val expiresAtMs: Long? = null
 )
 
 data class PlayerFormat(
