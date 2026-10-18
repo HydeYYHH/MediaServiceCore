@@ -125,6 +125,7 @@ internal fun jsonQuote(text: String): String = buildString {
     append('"')
 }
 internal fun Json.Obj.arr(name: String): List<Json> = (fields[name] as? Json.Arr)?.items.orEmpty()
+internal fun jsonEscape(text: String): String = jsonQuote(text).let { it.substring(1, it.length - 1) }
 internal fun Json.Obj.scalar(name: String): String? = when (val v = fields[name]) {
     is Json.Str -> v.value
     is Json.Num -> v.text

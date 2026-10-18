@@ -161,18 +161,4 @@ private fun wholeNumber(node: Json.Obj, name: String): Int? {
     return text.toIntOrNull()
 }
 
-private fun escapeJson(value: String): String {
-    val out = StringBuilder()
-    val chars: CharArray = value.toCharArray()
-    for (c in chars) {
-        when (c) {
-            '\\' -> out.append("\\\\")
-            '"' -> out.append("\\\"")
-            '\n' -> out.append("\\n")
-            '\r' -> out.append("\\r")
-            '\t' -> out.append("\\t")
-            else -> out.append(c)
-        }
-    }
-    return out.toString()
-}
+private fun escapeJson(value: String): String = jsonEscape(value)

@@ -84,17 +84,4 @@ private fun displayText(node: Json.Obj?): String? {
     return if (out.isEmpty()) null else out.toString()
 }
 
-private fun escapeJson(value: String): String {
-    val out = StringBuilder()
-    for (c in value) {
-        when (c) {
-            '\\' -> out.append("\\\\")
-            '"' -> out.append("\\\"")
-            '\n' -> out.append("\\n")
-            '\r' -> out.append("\\r")
-            '\t' -> out.append("\\t")
-            else -> out.append(c)
-        }
-    }
-    return out.toString()
-}
+private fun escapeJson(value: String): String = jsonEscape(value)

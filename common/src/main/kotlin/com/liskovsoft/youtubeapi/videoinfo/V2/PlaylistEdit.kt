@@ -165,17 +165,4 @@ private fun firstNamed(node: Json, name: String): String? = when (node) {
     else -> null
 }
 
-private fun escapeJson(value: String): String {
-    val out = StringBuilder()
-    for (c in value) {
-        when (c) {
-            '\\' -> out.append("\\\\")
-            '"' -> out.append("\\\"")
-            '\n' -> out.append("\\n")
-            '\r' -> out.append("\\r")
-            '\t' -> out.append("\\t")
-            else -> out.append(c)
-        }
-    }
-    return out.toString()
-}
+private fun escapeJson(value: String): String = jsonEscape(value)

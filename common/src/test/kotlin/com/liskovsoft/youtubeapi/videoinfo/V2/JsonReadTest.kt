@@ -3,6 +3,14 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class JsonReadTest {
+    @Test fun legacyRequestBuildersEscapeEveryControlCharacter() {
+        val value="line\u0000\b\n\r\t\u001f"
+        assertEquals(value,jsonObject(createCommentQuery(value,"key",null).body)!!.text("commentText"))
+        assertEquals(value,jsonObject(commentQuery(null,value,null).body)!!.text("continuation"))
+        createPlaylist(value,null,null) { query ->
+            assertEquals(value,jsonObject(query.body)!!.text("title"));200 to ""
+        }
+    }
     @Test fun rejectsMalformedDocuments() {
         for (text in listOf("{\"a\":\"\\uZZZZ\"}", "{\"a\":", "{}", "[01]", "[-]", "[1.]", "[1e]", "{}x", "[1 2]", "{\"a\":\"\n\"}").filter { it != "{}" }) {
             assertNull(text, jsonValue(text))

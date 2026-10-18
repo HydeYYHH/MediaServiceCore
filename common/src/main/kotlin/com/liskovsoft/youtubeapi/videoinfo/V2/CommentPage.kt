@@ -298,14 +298,4 @@ private fun join(parts: List<String>): String {
     return out.toString()
 }
 
-private fun escapeJson(value: String): String {
-    val out = StringBuilder()
-    for (c in value) {
-        when (c) {
-            '\\' -> out.append("\\\\")
-            '"' -> out.append("\\\"")
-            else -> out.append(c)
-        }
-    }
-    return out.toString()
-}
+private fun escapeJson(value: String): String = jsonEscape(value)
