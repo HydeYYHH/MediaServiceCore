@@ -26,7 +26,8 @@ fun readStoryboard(spec: String?): Storyboard? {
     return if (levels.isEmpty()) null else Storyboard(parts.first(), levels)
 }
 data class WatchPage(val videoId: String?, val title: String?, val description: String?, val author: String?, val channelId: String?,
-    val chapters: List<Chapter>, val related: List<MediaItem>, val nextKey: String?, val commentsKey: String?, val chatKey: String?, val storyboard: Storyboard?)
+    val chapters: List<Chapter>, val related: List<MediaItem>, val nextKey: String?, val commentsKey: String?, val chatKey: String?, val storyboard: Storyboard?,
+    val queue: WatchQueue? = null, val resumeSeconds: Long? = null)
 fun watchPage(body: String, videoId: String? = null): WatchPage {
     val root = jsonObject(body)
     val primary = root?.objects("videoPrimaryInfoRenderer")?.firstOrNull()
@@ -38,15 +39,19 @@ fun watchPage(body: String, videoId: String? = null): WatchPage {
         }).filter { it.startMs >= 0 }.distinctBy { it.startMs }.sortedBy { it.startMs }
     val recommendations = root?.path("contents", "twoColumnWatchNextResults", "secondaryResults", "secondaryResults") ?: root
     val liveChat = root?.objects("liveChatRenderer")?.firstOrNull()
+    val queue = root?.let(::readWatchQueue)
     return WatchPage(root?.obj("videoDetails")?.text("videoId") ?: videoId, primary?.display("title") ?: root?.obj("videoDetails")?.text("title"),
         secondary?.display("description") ?: secondary?.obj("attributedDescription")?.text("content"), owner?.display("title"),
         owner?.path("navigationEndpoint", "browseEndpoint")?.text("browseId"), chapters,
         recommendations?.let(::contentItems).orEmpty(), recommendations?.let(::pageKey), commentKey(body), liveChat?.let(::pageKey),
-        readStoryboard(root?.objects("playerStoryboardSpecRenderer")?.firstOrNull()?.text("spec")))
+        readStoryboard(root?.objects("playerStoryboardSpecRenderer")?.firstOrNull()?.text("spec")), queue, root?.let { resumeSeconds(it, queue) })
 }
 fun loadWatch(videoId: String?, context: RequestContext = RequestContext(), continuation: String? = null,
-    http: HttpClient = JvmHttpClient()): ReadResult<WatchPage> {
+    http: HttpClient = JvmHttpClient(), playlistId: String? = null, index: Int? = null, params: String? = null): ReadResult<WatchPage> {
     if (continuation == null && (videoId == null || !videoIdAccepted(videoId))) return ReadResult(error = RequestError(RequestFailure.INVALID, "invalid_video_id"))
-    val reply = requestObject(youtubeQuery(YOUTUBE_API + "next", if (continuation != null) payload("continuation" to continuation) else payload("videoId" to videoId), context), http)
+    if (index != null && index < 0) return ReadResult(error = RequestError(RequestFailure.INVALID, "invalid_queue_index"))
+    val fields = if (continuation != null) payload("continuation" to continuation) else
+        payload("videoId" to videoId, "playlistId" to playlistId, "params" to params) + if (index == null) "" else ",\"index\":$index"
+    val reply = requestObject(youtubeQuery(YOUTUBE_API + "next", fields, context), http)
     return if (reply.ok) ReadResult(watchPage(reply.value!!.encode(), videoId)) else ReadResult(error = reply.error)
 }
