@@ -10,9 +10,7 @@ fun browsePage(body: String): BrowsePage {
         BrowseTab(it.text("title") ?: it.display("title"), endpoint?.text("browseId"), endpoint?.text("params"), it.bool("selected") == true)
     }
     val selected = root.objects("tabRenderer").firstOrNull { it.bool("selected") == true }?.obj("content") ?: root
-    val messages = listOf("feedNudgeRenderer","messageRenderer","backgroundPromoRenderer","alertRenderer").flatMap { name ->
-        selected.objects(name).mapNotNull { it.display("title") ?: it.display("text") ?: it.display("message") }
-    }.distinct()
+    val messages = pageMessages(selected)
     return BrowsePage(contentItems(selected), pageGroups(selected), tabs, pageKey(selected), messages, pageActions(selected))
 }
 fun browseQuery(browseId: String?, context: RequestContext = RequestContext(), params: String? = null, continuation: String? = null): PlayerQuery {
@@ -23,5 +21,5 @@ fun browseQuery(browseId: String?, context: RequestContext = RequestContext(), p
 fun loadBrowse(browseId: String?, context: RequestContext = RequestContext(), params: String? = null, continuation: String? = null,
     http: HttpClient = JvmHttpClient()): ReadResult<BrowsePage> {
     val reply = requestObject(browseQuery(browseId, context, params, continuation), http)
-    return if (reply.ok) ReadResult(browsePage(reply.value!!.encode())) else ReadResult(error = reply.error)
+    return if (reply.ok) readBrowsePage(reply.value!!) else ReadResult(error = reply.error)
 }

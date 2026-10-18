@@ -17,5 +17,5 @@ fun loadHome(section: HomeSection = HomeSection.HOME, context: RequestContext = 
     http: HttpClient = JvmHttpClient()): ReadResult<BrowsePage> {
     val result = requestObject(homeQuery(section, context, continuation), http)
     if (!result.ok) return ReadResult(error = result.error)
-    return if (section == HomeSection.SHORTS) readShorts(result.value!!) else ReadResult(browsePage(result.value!!.encode()))
+    return if (section == HomeSection.SHORTS) readShorts(result.value!!) else readBrowsePage(result.value!!)
 }
