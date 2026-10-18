@@ -65,7 +65,9 @@ data class PlayerFormat(
     val width: Int? = null,
     val contentLength: Long? = null,
     val initRange: PlayerRange? = null,
-    val indexRange: PlayerRange? = null
+    val indexRange: PlayerRange? = null,
+    val codecs: List<String> = emptyList(),
+    val dynamicRange: VideoRange = VideoRange.UNKNOWN
 )
 
 data class AttemptResult(val form: PlaybackForm, val client: PlayerClient?)
