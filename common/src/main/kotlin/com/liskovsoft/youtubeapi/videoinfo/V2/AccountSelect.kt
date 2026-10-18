@@ -3,9 +3,9 @@ package com.liskovsoft.youtubeapi.videoinfo.V2
 data class Account(val id: String, val name: String?, val email: String?, val photo: String?, val selected: Boolean, val disabled: Boolean, val pageId: String?)
 fun readAccounts(body: String): List<Account> {
     val root = jsonObject(body) ?: return emptyList()
-    return (root.objects("accountItem") + root.objects("accountItemRenderer")).mapIndexedNotNull { index, item ->
+    return (root.objects("accountItem") + root.objects("accountItemRenderer")).mapNotNull { item ->
         val page = item.objects("pageIdToken").firstOrNull()?.text("pageId")
-        val id = page ?: item.text("accountId") ?: item.display("accountByline") ?: item.display("accountName") ?: return@mapIndexedNotNull null
+        val id = page ?: item.text("accountId") ?: item.display("accountByline") ?: item.display("accountName") ?: return@mapNotNull null
         Account(id, item.display("accountName"), item.display("accountByline"), item.thumbnail("accountPhoto"),
             item.bool("isSelected") == true, item.bool("isDisabled") == true, page)
     }.distinctBy { it.id }

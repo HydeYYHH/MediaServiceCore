@@ -72,10 +72,10 @@ class LoungeConnection(private val screenName: String, private val deviceId: Str
                     val firstLine = text.substringBefore('\n').trim()
                     val frame = if (firstLine.isNotEmpty() && firstLine.all { it in '0'..'9' }) text.substringAfter('\n') else text
                     val frames = LoungeFrames()
-                    val commands = frames.push(frame.length.toString() + "\n" + frame)
+                    val initialCommands = frames.push(frame.length.toString() + "\n" + frame)
                     frames.finish()
                     current = LoungeIdentity(screenName,deviceId,screen,session,frames.lastId,requests.get())
-                    for (command in commands) { if (!closed) receive(command) }
+                    for (command in initialCommands) { if (!closed) receive(command) }
                     if (closed) break
                     val listenUrl = urlWithParameter(session.listenUrl,"AID",maxOf(0,frames.lastId).toString())
                     val active = transport.open(HttpRequest("GET",listenUrl))
