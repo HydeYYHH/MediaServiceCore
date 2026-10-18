@@ -14,7 +14,8 @@ class PlaybackSession(private val http: HttpClient = JvmHttpClient(), private va
     fun load(videoId: String, context: RequestContext = RequestContext(), preference: PlaybackPreference = PlaybackPreference(),
         fresh: Boolean = false, excluded: Set<PlayerClient> = emptySet()): ReadResult<PlaybackLoad> {
         val generation = results.generation()
-        val key = listOf(videoId, context.scope(), preference.copy(mimeTypes = preference.mimeTypes.toSortedSet()).toString(), script?.url, script?.source,
+        val key = listOf(videoId, context.scope(), preference.copy(mimeTypes = preference.mimeTypes.toSortedSet(),
+            videoCodecs = preference.videoCodecs.toSortedSet(), audioCodecs = preference.audioCodecs.toSortedSet()).toString(), script?.url, script?.source,
             fresh.toString(), excluded.sortedBy { it.name }.toString(), generation.toString()).joinToString("\u0001")
         if (!fresh) results.get(key)?.let { return ReadResult(it) }
         val loaded = try { lock.load(key) {

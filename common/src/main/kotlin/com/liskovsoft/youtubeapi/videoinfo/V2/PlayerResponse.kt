@@ -88,7 +88,9 @@ private fun Json.Obj.formats(name: String): List<PlayerFormat> {
             format.integer("width"),
             format.long("contentLength"),
             playerRange(format.obj("initRange")),
-            playerRange(format.obj("indexRange"))
+            playerRange(format.obj("indexRange")),
+            formatCodecs(format.text("mimeType")),
+            videoRange(format)
         ))
     }
     return formats
