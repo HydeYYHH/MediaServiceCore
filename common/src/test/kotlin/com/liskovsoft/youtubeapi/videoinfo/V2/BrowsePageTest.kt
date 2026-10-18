@@ -2,6 +2,11 @@ package com.liskovsoft.youtubeapi.videoinfo.V2
 import org.junit.Assert.*
 import org.junit.Test
 class BrowsePageTest {
+    @Test fun keepsTheServersEmptyFeedMessage() {
+        val page=browsePage("""{"contents":{"richGridRenderer":{"header":{"feedNudgeRenderer":{"title":{"runs":[{"text":"Try searching to get started"}]}}}}}}""")
+        assertTrue(page.items.isEmpty())
+        assertEquals(listOf("Try searching to get started"),page.messages)
+    }
     @Test fun readsOnlyTheSelectedTabsItemsAndKeepsOtherEndpoints() {
         val p = browsePage("""{"tabs":[{"tabRenderer":{"title":"Videos","selected":true,"endpoint":{"browseEndpoint":{"browseId":"UC1","params":"videos"}},"content":{"shelfRenderer":{"title":{"simpleText":"Uploads"},"items":[{"gridVideoRenderer":{"videoId":"v"}}],"continuations":[{"nextContinuationData":{"continuation":"next"}}]}}}},{"tabRenderer":{"title":"Live","content":{"videoRenderer":{"videoId":"hidden"}}}}]}""")
         assertEquals(listOf("v"), p.items.map { it.id }); assertEquals("Uploads", p.groups.single().title)
