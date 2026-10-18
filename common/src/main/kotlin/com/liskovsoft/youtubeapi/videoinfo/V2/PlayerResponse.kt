@@ -104,4 +104,3 @@ private fun plainUrls(formats: List<PlayerFormat>): List<String> {
 }
 
 internal class JsonEnd : RuntimeException()
-
