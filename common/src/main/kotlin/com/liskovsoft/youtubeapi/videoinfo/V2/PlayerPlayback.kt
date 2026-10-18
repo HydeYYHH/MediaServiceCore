@@ -9,7 +9,10 @@ private const val TEXT_TIMEOUT_MS = 15000
 data class Playback(
     val hlsUrl: String?,
     val videoUrl: String?,
-    val audioUrl: String?
+    val audioUrl: String?,
+    val dashUrl: String? = null,
+    val sabrUrl: String? = null,
+    val ustreamerConfig: String? = null
 )
 
 data class PlaybackLoad(
@@ -20,18 +23,7 @@ data class PlaybackLoad(
 
 private val emptyPlayback = Playback(null, null, null)
 
-fun selectPlayback(answer: PlayerAnswer?): Playback {
-    if (answer == null) return emptyPlayback
-    val hls = answer.hlsUrl
-    val muxed = best(answer.muxedFormats, null)
-    val video = best(answer.adaptiveFormats, "video/")
-    val audio = best(answer.adaptiveFormats, "audio/")
-    if (muxed == null && video == null && audio == null && hls == null) return emptyPlayback
-    if (answer.live && hls != null) return Playback(hls, null, null)
-    if (muxed != null) return Playback(null, muxed.url, null)
-    if (video != null || audio != null) return Playback(null, video?.url, audio?.url)
-    return Playback(hls, null, null)
-}
+fun selectPlayback(answer: PlayerAnswer?, preference: PlaybackPreference = PlaybackPreference()): Playback = preferredPlayback(answer, preference)
 
 fun getText(url: String): String {
     val connection = URL(url).openConnection() as HttpURLConnection
@@ -70,7 +62,7 @@ fun loadPlayback(
         post
     )
     val result = PlaybackLoad(load.form, load.client, selectPlayback(load.answer))
-    warmHost(result.playback.videoUrl ?: result.playback.hlsUrl)
+
     return result
 }
 
@@ -121,46 +113,3 @@ private fun cachedSolve(
     }
 }
 
-private fun warmHost(url: String?) {
-    if (url == null || url.isEmpty()) return
-    try {
-        val parsed = URL(url)
-        val host = parsed.host
-        if (host == null || host.isEmpty()) return
-        val port = if (parsed.port > 0) ":" + parsed.port else ""
-        val connection = URL(parsed.protocol + "://" + host + port + "/").openConnection() as HttpURLConnection
-        try {
-            connection.requestMethod = "HEAD"
-            connection.instanceFollowRedirects = false
-            connection.connectTimeout = TEXT_TIMEOUT_MS
-            connection.readTimeout = TEXT_TIMEOUT_MS
-            try {
-                connection.responseCode
-            } catch (failure: Exception) {
-            }
-        } finally {
-            connection.disconnect()
-        }
-    } catch (failure: Exception) {
-    }
-}
-
-private fun best(formats: List<PlayerFormat>, mimePrefix: String?): PlayerFormat? {
-    var chosen: PlayerFormat? = null
-    for (format in formats) {
-        val url = format.url
-        if (url == null || url.isEmpty()) continue
-        if (mimePrefix != null) {
-            val mime = format.mimeType
-            if (mime == null || !mime.startsWith(mimePrefix)) continue
-        }
-        if (chosen == null || prefer(format, chosen)) chosen = format
-    }
-    return chosen
-}
-
-private fun prefer(candidate: PlayerFormat, current: PlayerFormat): Boolean {
-    val height = (candidate.height ?: -1).compareTo(current.height ?: -1)
-    if (height != 0) return height > 0
-    return (candidate.bitrate ?: -1) > (current.bitrate ?: -1)
-}
