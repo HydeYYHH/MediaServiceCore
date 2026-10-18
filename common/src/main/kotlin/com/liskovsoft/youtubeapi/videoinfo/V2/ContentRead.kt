@@ -28,10 +28,13 @@ private fun contentItem(type: String, item: Json.Obj): MediaItem? {
         ?: item.path("rendererContext", "commandContext", "onTap", "innertubeCommand")
     val watch = command?.obj("watchEndpoint") ?: command?.obj("reelWatchEndpoint")
     val browse = command?.obj("browseEndpoint")
-    val id = item.text("videoId") ?: item.text("channelId") ?: item.text("playlistId")
+    val playlist = item.text("contentType")?.contains("PLAYLIST") == true
+    val id = (if (playlist) item.text("contentId") ?: watch?.text("playlistId") else null)
+        ?: item.text("videoId") ?: item.text("channelId") ?: item.text("playlistId")
         ?: watch?.text("videoId") ?: browse?.text("browseId") ?: item.text("contentId") ?: return null
     val kind = when (val expected = contentRenderers.getValue(type)) {
         "tile", "lockup" -> when {
+            playlist -> "playlist"
             watch != null -> if (command?.obj("reelWatchEndpoint") != null) "short" else "video"
             id.startsWith("UC") -> "channel"
             browse != null || item.text("contentType")?.contains("PLAYLIST") == true -> "playlist"
