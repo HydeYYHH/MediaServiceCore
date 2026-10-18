@@ -7,37 +7,42 @@ sealed class ChatAction {
     data class Remove(val removal: ChatRemoval) : ChatAction()
 }
 data class ChatPage(val messages: List<ChatMessage>, val removals: List<ChatRemoval>, val nextKey: String?, val waitMs: Long,
-    val actions: List<ChatAction> = emptyList())
+    val actions: List<ChatAction> = emptyList(), val events: List<ChatEvent> = emptyList(), val replay: Boolean = false)
 fun chatPage(body: String): ChatPage {
     val root = jsonObject(body)
     val continuation = root?.path("continuationContents","liveChatContinuation") ?: root
-    val actions = ArrayList<ChatAction>()
+    val events = ArrayList<ChatEvent>()
     val kinds = setOf("liveChatTextMessageRenderer","liveChatPaidMessageRenderer","liveChatMembershipItemRenderer","liveChatPaidStickerRenderer")
-    fun visit(node: Json) {
+    fun visit(node: Json, offsetMs: Long? = null) {
         when(node) {
             is Json.Obj -> {
                 for((kind,value) in node.fields) {
                     val item=value as? Json.Obj
                     when {
-                        kind in kinds && item!=null -> actions.add(ChatAction.Add(ChatMessage(item.text("id"),item.display("authorName"),
-                            item.display("message") ?: item.display("headerSubtext"),item.thumbnail("authorPhoto"),item.long("timestampUsec"),kind)))
-                        kind=="markChatItemAsDeletedAction" && item!=null -> actions.add(ChatAction.Remove(ChatRemoval(item.text("targetItemId"),null)))
-                        kind=="markChatItemsByAuthorAsDeletedAction" && item!=null -> actions.add(ChatAction.Remove(ChatRemoval(null,item.text("externalChannelId"))))
-                        else -> visit(value)
+                        kind == "replayChatItemAction" && item != null -> visit(item.fields["actions"] ?: Json.Arr(emptyList()),
+                            item.long("videoOffsetTimeMsec")?.takeIf { it >= 0 })
+                        kind in kinds && item!=null -> events.add(ChatEvent(offsetMs, ChatAction.Add(ChatMessage(item.text("id"),item.display("authorName"),
+                            item.display("message") ?: item.display("headerSubtext"),item.thumbnail("authorPhoto"),item.long("timestampUsec"),kind))))
+                        kind=="markChatItemAsDeletedAction" && item!=null -> events.add(ChatEvent(offsetMs, ChatAction.Remove(ChatRemoval(item.text("targetItemId"),null))))
+                        kind=="markChatItemsByAuthorAsDeletedAction" && item!=null -> events.add(ChatEvent(offsetMs, ChatAction.Remove(ChatRemoval(null,item.text("externalChannelId")))))
+                        else -> visit(value, offsetMs)
                     }
                 }
             }
-            is Json.Arr -> node.items.forEach { visit(it) }
+            is Json.Arr -> node.items.forEach { visit(it, offsetMs) }
             else -> Unit
         }
     }
     if(continuation!=null) visit(continuation)
+    val actions = events.map { it.action }
     val messages=actions.filterIsInstance<ChatAction.Add>().map {it.message}
     val removals=actions.filterIsInstance<ChatAction.Remove>().map {it.removal}
-    val next = continuation?.objects("timedContinuationData")?.firstOrNull()
+    val replay = continuation?.objects("liveChatReplayContinuationData")?.firstOrNull()
+    val next = replay ?: continuation?.objects("timedContinuationData")?.firstOrNull()
         ?: continuation?.objects("invalidationContinuationData")?.firstOrNull()
         ?: continuation?.objects("reloadContinuationData")?.firstOrNull()
-    return ChatPage(messages,removals,next?.text("continuation"),(next?.long("timeoutMs") ?: 1000).coerceIn(100,60000),actions)
+    return ChatPage(messages,removals,next?.text("continuation"),(next?.long("timeoutMs") ?: 1000).coerceIn(100,60000),actions,events,
+        replay != null || events.any { it.offsetMs != null })
 }
 fun loadChat(continuation: String, context: RequestContext = RequestContext(), http: HttpClient = JvmHttpClient()): ReadResult<ChatPage> {
     if (continuation.isBlank()) return ReadResult(error=RequestError(RequestFailure.INVALID,"missing_chat_key"))
@@ -54,11 +59,9 @@ class ChatConnection(private val context: RequestContext = RequestContext(), pri
         while(!closed && !Thread.currentThread().isInterrupted && continuation!=null) {
             val reply=loadChat(continuation,context,http)
             if(!reply.ok) return ReadResult(error=reply.error)
-            val page=reply.value!!
-            val actions=page.actions.filter { it !is ChatAction.Add || it.message.id==null || seen.add(it.message.id) }
-            val unique=actions.filterIsInstance<ChatAction.Add>().map {it.message}
-            while(seen.size>1000) seen.remove(seen.first())
-            receive(page.copy(messages=unique,actions=actions))
+            if (closed) break
+            val page = uniqueChat(reply.value!!, seen)
+            receive(page)
             continuation=page.nextKey
             if(!closed && continuation!=null) try { wait(page.waitMs) } catch(_:InterruptedException) {
                 Thread.currentThread().interrupt(); return ReadResult(error=RequestError(RequestFailure.CANCELLED,"cancelled"))
