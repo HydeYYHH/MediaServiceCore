@@ -5,7 +5,7 @@ class PlayerContextTest {
     @Test fun bindsSolvingAndTokensToTheScriptVideoAndPurpose() {
         val purposes = ArrayList<TokenPurpose>()
         val provider = object : PlayerTokenProvider { override fun token(request: PlayerTokenRequest): PlayerToken {
-            assertEquals("video", request.videoId); assertEquals("account", request.context.accountId)
+            assertEquals("video", request.videoId); assertNull(request.context.accountId)
             purposes.add(request.purpose); return PlayerToken(request.purpose.name, 10000)
         }}
         val solve = object : PlayerSolver { override fun solve(request: PlayerChallengeRequest): PlayerChallenge {
