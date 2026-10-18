@@ -41,24 +41,25 @@ internal class LoungeFrames(initialId: Long = -1, private val maxChars: Int = 10
     fun finish() { if (pending.toString().isNotBlank()) throw IOException("truncated_lounge_frame") }
 }
 class LoungeConnection(private val screenName: String, private val deviceId: String, private val screen: () -> LoungeScreen,
-    private val http: HttpClient, private val transport: LoungeTransport, private val wait: (Long) -> Unit = Thread::sleep,
+    private val http: HttpClient, private val transport: LoungeTransport, wait: ((Long) -> Unit)? = null,
     private val maxReconnects: Int = 3) : java.io.Closeable {
     @Volatile private var closed = false
     @Volatile private var reader: Reader? = null
     @Volatile private var current: LoungeIdentity? = null
     private val running = java.util.concurrent.atomic.AtomicBoolean()
     private val requests = java.util.concurrent.atomic.AtomicInteger()
+    private val waiting = ConnectionWait(wait)
     init { require(screenName.isNotBlank() && deviceId.isNotBlank() && maxReconnects >= 0) }
     fun identity() = current
     internal fun nextRequestId() = requests.incrementAndGet()
-    override fun close() { closed = true; try { reader?.close() } catch (_: IOException) {} }
+    override fun close() { closed = true; waiting.close(); try { reader?.close() } catch (_: IOException) {} }
     fun listen(receive: (LoungeCommand) -> Unit): ReadResult<Boolean> {
         if (!running.compareAndSet(false,true)) return ReadResult(error=RequestError(RequestFailure.INVALID,"already_listening"))
         var failures = 0
         try {
             while (!closed && !Thread.currentThread().isInterrupted) {
                 if (failures > maxReconnects) return ReadResult(error=RequestError(RequestFailure.TRANSPORT,"lounge_reconnect_exhausted"))
-                if (failures > 0) wait(minOf(5000L, failures * 1000L))
+                if (failures > 0) waiting.pause(minOf(5000L, failures * 1000L))
                 if (closed) break
                 try {
                     val screen = screen()
