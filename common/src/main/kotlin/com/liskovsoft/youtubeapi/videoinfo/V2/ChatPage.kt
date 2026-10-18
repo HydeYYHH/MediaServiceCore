@@ -50,23 +50,30 @@ fun loadChat(continuation: String, context: RequestContext = RequestContext(), h
     return if(response.ok) ReadResult(chatPage(response.value!!.encode())) else ReadResult(error=response.error)
 }
 class ChatConnection(private val context: RequestContext = RequestContext(), private val http: HttpClient = JvmHttpClient(),
-    private val wait: (Long)->Unit = Thread::sleep) : java.io.Closeable {
-    @Volatile private var closed=false
-    override fun close() { closed=true }
-    fun listen(key:String, receive:(ChatPage)->Unit):ReadResult<Boolean> {
-        var continuation:String?=key
-        val seen=java.util.LinkedHashSet<String>()
-        while(!closed && !Thread.currentThread().isInterrupted && continuation!=null) {
-            val reply=loadChat(continuation,context,http)
-            if(!reply.ok) return ReadResult(error=reply.error)
-            if (closed) break
-            val page = uniqueChat(reply.value!!, seen)
-            receive(page)
-            continuation=page.nextKey
-            if(!closed && continuation!=null) try { wait(page.waitMs) } catch(_:InterruptedException) {
-                Thread.currentThread().interrupt(); return ReadResult(error=RequestError(RequestFailure.CANCELLED,"cancelled"))
+    wait: ((Long) -> Unit)? = null) : java.io.Closeable {
+    @Volatile private var closed = false
+    private val waiting = ConnectionWait(wait)
+    private val running = java.util.concurrent.atomic.AtomicBoolean()
+    override fun close() { closed = true; waiting.close() }
+
+    fun listen(key: String, receive: (ChatPage) -> Unit): ReadResult<Boolean> {
+        if (!running.compareAndSet(false, true)) return ReadResult(error = RequestError(RequestFailure.INVALID, "already_listening"))
+        try {
+            var continuation: String? = key
+            val seen = java.util.LinkedHashSet<String>()
+            while (!closed && !Thread.currentThread().isInterrupted && continuation != null) {
+                val reply = loadChat(continuation, context, http)
+                if (closed) break
+                if (!reply.ok) return ReadResult(error = reply.error)
+                val page = uniqueChat(reply.value!!, seen)
+                receive(page)
+                continuation = page.nextKey
+                if (!closed && continuation != null) waiting.pause(page.waitMs)
             }
-        }
-        return ReadResult(true)
+            return if (Thread.currentThread().isInterrupted) ReadResult(error = RequestError(RequestFailure.CANCELLED, "cancelled")) else ReadResult(true)
+        } catch (_: InterruptedException) {
+            Thread.currentThread().interrupt()
+            return ReadResult(error = RequestError(RequestFailure.CANCELLED, "cancelled"))
+        } finally { running.set(false) }
     }
 }
