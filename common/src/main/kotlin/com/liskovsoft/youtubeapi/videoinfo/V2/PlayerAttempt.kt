@@ -43,7 +43,13 @@ data class PlayerAnswer(
     val muxedUrls: List<String> = emptyList(),
     val adaptiveUrls: List<String> = emptyList(),
     val muxedFormats: List<PlayerFormat> = emptyList(),
-    val adaptiveFormats: List<PlayerFormat> = emptyList()
+    val adaptiveFormats: List<PlayerFormat> = emptyList(),
+    val dashUrl: String? = null,
+    val sabrUrl: String? = null,
+    val ustreamerConfig: String? = null,
+    val expiresInSeconds: Long? = null,
+    val details: PlayerDetails? = null,
+    val captions: List<PlayerCaption> = emptyList()
 )
 
 data class PlayerFormat(
@@ -54,7 +60,11 @@ data class PlayerFormat(
     val height: Int? = null,
     val bitrate: Int? = null,
     val fps: Int? = null,
-    val audioTrack: PlayerAudio? = null
+    val audioTrack: PlayerAudio? = null,
+    val width: Int? = null,
+    val contentLength: Long? = null,
+    val initRange: PlayerRange? = null,
+    val indexRange: PlayerRange? = null
 )
 
 data class AttemptResult(val form: PlaybackForm, val client: PlayerClient?)
@@ -115,7 +125,7 @@ class PlayerAttempt(private val queues: PlayerClientQueues) {
             answer.status,
             answer.reason,
             answer.hasDirectUrl,
-            answer.hasHls,
+            answer.hasHls || answer.dashUrl != null || answer.sabrUrl != null,
             answer.hasMuxed,
             live
         ))

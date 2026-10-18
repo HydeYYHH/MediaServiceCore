@@ -27,7 +27,13 @@ fun playerAnswer(body: String): PlayerAnswer {
         muxedUrls,
         adaptiveUrls,
         muxedFormats,
-        adaptiveFormats
+        adaptiveFormats,
+        streaming?.text("dashManifestUrl"),
+        streaming?.text("serverAbrStreamingUrl"),
+        root.path("playerConfig", "mediaCommonConfig", "mediaUstreamerRequestConfig")?.text("videoPlaybackUstreamerConfig"),
+        streaming?.long("expiresInSeconds"),
+        readPlayerDetails(root),
+        translateCaptions(playerCaptions(body), captionLanguages(body), playerAudioTracks(body))
     )
 }
 
@@ -78,7 +84,11 @@ private fun Json.Obj.formats(name: String): List<PlayerFormat> {
             format.integer("height"),
             format.integer("bitrate"),
             format.integer("fps"),
-            readPlayerAudio(format)
+            readPlayerAudio(format),
+            format.integer("width"),
+            format.long("contentLength"),
+            playerRange(format.obj("initRange")),
+            playerRange(format.obj("indexRange"))
         ))
     }
     return formats
