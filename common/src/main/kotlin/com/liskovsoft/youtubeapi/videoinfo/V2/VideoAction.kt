@@ -27,7 +27,7 @@ internal fun actionReply(root: Json.Obj): ReadResult<ActionReply> {
     return ReadResult(ActionReply(status, root.encode(), if (confirmed) ActionState.CONFIRMED else ActionState.UNCONFIRMED))
 }
 internal fun signedAction(endpoint: String, fields: String, context: RequestContext, http: HttpClient): ReadResult<ActionReply> {
-    if (context.accessToken == null) return ReadResult(error = RequestError(RequestFailure.AUTH, "sign_in_required"))
+    if (!context.signedIn) return ReadResult(error = RequestError(RequestFailure.AUTH, "sign_in_required"))
     val reply = requestObject(youtubeQuery(YOUTUBE_API + endpoint, fields, context), http)
     return if (reply.ok) actionReply(reply.value!!) else ReadResult(error = reply.error)
 }

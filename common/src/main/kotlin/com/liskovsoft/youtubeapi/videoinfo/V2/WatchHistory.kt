@@ -18,7 +18,7 @@ class WatchHistory(private val http: HttpClient = JvmHttpClient(), private val c
     private val positions = java.util.LinkedHashMap<String, Long>()
     @Synchronized fun update(videoId: String, positionMs: Long, durationMs: Long, tracking: PlayerTracking,
         context: RequestContext): ReadResult<Boolean> {
-        if (context.accessToken == null) return ReadResult(error = RequestError(RequestFailure.AUTH, "sign_in_required"))
+        if (!context.signedIn) return ReadResult(error = RequestError(RequestFailure.AUTH, "sign_in_required"))
         if (!videoIdAccepted(videoId) || durationMs <= 0 || positionMs !in 0..durationMs)
             return ReadResult(error = RequestError(RequestFailure.INVALID, "invalid_watch_position"))
         val key = context.scope() + "\u0000" + videoId

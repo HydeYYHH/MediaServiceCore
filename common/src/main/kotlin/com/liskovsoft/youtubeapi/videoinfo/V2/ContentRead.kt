@@ -58,7 +58,15 @@ private fun contentItem(type: String, item: Json.Obj): MediaItem? {
         item.text("playlistId") ?: watch?.text("playlistId"), browse?.text("params"),
         actionEndpoint(command), pageActions(item), watch?.long("startTimeSeconds"), progress?.coerceIn(0, 100),
         badge?.text("badgeStyle")?.contains("LIVE") == true || item.objects("thumbnailOverlayTimeStatusRenderer").any { it.text("style") == "LIVE" },
-        watch?.text("playerParams"))
+        watch?.text("playerParams"),
+        item.thumbnail("channelThumbnail")
+            ?: item.objects("channelThumbnailWithLinkRenderer").firstOrNull()?.thumbnail("thumbnail")
+            ?: item.objects("decoratedAvatarViewModel").firstOrNull()?.path("avatar", "avatarViewModel")?.thumbnail("image"),
+        item.display("viewCountText") ?: item.display("shortViewCountText"),
+        item.display("publishedTimeText"),
+        item.display("videoCountText") ?: item.display("videoCount")
+            ?: item.objects("thumbnailOverlayBottomPanelRenderer").firstOrNull()?.display("text")
+            ?: badge?.text("text")?.takeIf { kind == "playlist" })
 }
 
 internal fun pageGroups(root: Json): List<MediaGroup> {

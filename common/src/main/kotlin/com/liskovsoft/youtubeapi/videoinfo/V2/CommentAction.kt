@@ -7,7 +7,7 @@ internal fun queryInContext(query: PlayerQuery, context: RequestContext): Player
     return youtubeQuery(query.url, fields, context)
 }
 fun performComment(query: PlayerQuery, context: RequestContext, http: HttpClient = JvmHttpClient()): ReadResult<CommentActionReply> {
-    if (context.accessToken == null) return ReadResult(error = RequestError(RequestFailure.AUTH, "sign_in_required"))
+    if (!context.signedIn) return ReadResult(error = RequestError(RequestFailure.AUTH, "sign_in_required"))
     val reply = requestObject(queryInContext(query, context), http)
     if (!reply.ok) return ReadResult(error = reply.error)
     val action = actionReply(reply.value!!)
