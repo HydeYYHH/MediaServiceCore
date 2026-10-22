@@ -11,7 +11,7 @@ fun readAccounts(body: String): List<Account> {
     }.distinctBy { it.id }
 }
 fun loadAccounts(context: RequestContext, http: HttpClient = JvmHttpClient()): ReadResult<List<Account>> {
-    if (context.accessToken == null) return ReadResult(error = RequestError(RequestFailure.AUTH, "sign_in_required"))
+    if (!context.signedIn) return ReadResult(error = RequestError(RequestFailure.AUTH, "sign_in_required"))
     val result = requestObject(youtubeQuery(YOUTUBE_API + "account/accounts_list",
         "\"accountReadMask\":{\"returnOwner\":true,\"returnBrandAccounts\":true,\"returnPersonaAccounts\":false}", context), http)
     return if (result.ok) ReadResult(readAccounts(result.value!!.encode())) else ReadResult(error = result.error)

@@ -6,11 +6,11 @@ enum class LibrarySection(val browseId: String) {
 }
 fun loadLibrary(section: LibrarySection, context: RequestContext, continuation: String? = null,
     http: HttpClient = JvmHttpClient()): ReadResult<BrowsePage> {
-    if (context.accessToken == null) return ReadResult(error = RequestError(RequestFailure.AUTH, "sign_in_required"))
+    if (!context.signedIn) return ReadResult(error = RequestError(RequestFailure.AUTH, "sign_in_required"))
     return loadBrowse(section.browseId, context, continuation = continuation, http = http)
 }
 fun loadSubscribedChannels(context: RequestContext, http: HttpClient = JvmHttpClient()): ReadResult<List<MediaItem>> {
-    if (context.accessToken == null) return ReadResult(error = RequestError(RequestFailure.AUTH, "sign_in_required"))
+    if (!context.signedIn) return ReadResult(error = RequestError(RequestFailure.AUTH, "sign_in_required"))
     val result = requestObject(youtubeQuery(YOUTUBE_API + "guide", "", context), http)
     if (!result.ok) return ReadResult(error = result.error)
     val items = result.value!!.objects("guideEntryRenderer").mapNotNull { entry ->

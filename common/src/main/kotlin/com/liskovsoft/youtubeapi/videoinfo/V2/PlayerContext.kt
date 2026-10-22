@@ -61,7 +61,7 @@ fun loadPlayer(videoId: String, context: RequestContext, http: HttpClient = JvmH
                 it.copy(url = it.url?.let { url -> urlWithParameter(url, "pot", subtitlePot) })
             })
             val deadlines = listOfNotNull(tokenDeadline, fetched.expiresInSeconds?.let { receivedAt + it.coerceIn(0, 31536000) * 1000 })
-            fetched = fetched.copy(expiresAtMs = deadlines.min())
+            fetched = fetched.copy(expiresAtMs = if (deadlines.isEmpty()) null else deadlines.min())
             if (fetched.expiresAtMs?.let { it <= now() } == true) {
                 lastError = RequestError(RequestFailure.UNSUPPORTED, "expired_player_source")
                 return@run PlayerAnswer(false, null, null, false, false, false, fetched.live)

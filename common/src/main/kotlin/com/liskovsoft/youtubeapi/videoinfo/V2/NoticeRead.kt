@@ -6,7 +6,7 @@ fun noticePage(body: String): NoticePage {
     return NoticePage(notices(body), root?.let(::pageKey))
 }
 fun loadNotices(context: RequestContext, continuation: String? = null, http: HttpClient = JvmHttpClient()): ReadResult<NoticePage> {
-    if (context.accessToken == null) return ReadResult(error = RequestError(RequestFailure.AUTH,"sign_in_required"))
+    if (!context.signedIn) return ReadResult(error = RequestError(RequestFailure.AUTH,"sign_in_required"))
     val query = if (continuation == null) queryInContext(noticeQuery(context.visitor),context) else
         youtubeQuery(YOUTUBE_API+"notification/get_notification_menu", payload("continuation" to continuation),context)
     val reply = requestObject(query,http)
