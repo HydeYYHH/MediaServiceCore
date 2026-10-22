@@ -24,14 +24,16 @@ class WatchHistory(private val http: HttpClient = JvmHttpClient(), private val c
         val key = context.scope() + "\u0000" + videoId
         fun send(base: String?, playback: Boolean): ReadResult<String> {
             val uri = try { java.net.URI(base ?: "") } catch (_: Exception) { null }
-            if (uri?.scheme != "https" || uri.host != "www.youtube.com" || (uri.port != -1 && uri.port != 443) ||
+            if (uri?.scheme != "https" || uri.host != "www.youtube.com" || uri.rawUserInfo != null || (uri.port != -1 && uri.port != 443) ||
                 uri.path != if (playback) "/api/stats/playback" else "/api/stats/watchtime")
                 return ReadResult(error = RequestError(RequestFailure.INVALID, "invalid_tracking_url"))
             var url = base!!
             val fields = listOf("docid" to videoId, "cpn" to cpn, "cmt" to (positionMs / 1000.0).toString(), "len" to (durationMs / 1000.0).toString(),
                 "st" to ((positions[key] ?: positionMs) / 1000.0).toString(), "et" to (positionMs / 1000.0).toString())
             for ((name, value) in fields) url = urlWithParameter(url, name, value)
-            return requestBody(HttpRequest("GET", url, mapOf("Authorization" to "Bearer " + context.accessToken)), http)
+            val headers = if (!context.accessToken.isNullOrBlank()) mapOf("Authorization" to "Bearer " + context.accessToken)
+                else context.webSession?.headers().orEmpty()
+            return requestBody(HttpRequest("GET", url, headers), http)
         }
         if (key !in positions) {
             val created = send(tracking.playbackUrl, true)
