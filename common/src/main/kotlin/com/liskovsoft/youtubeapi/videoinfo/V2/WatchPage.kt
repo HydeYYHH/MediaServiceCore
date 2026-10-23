@@ -28,7 +28,8 @@ fun readStoryboard(spec: String?): Storyboard? {
 data class WatchPage @JvmOverloads constructor(val videoId: String?, val title: String?, val description: String?, val author: String?, val channelId: String?,
     val chapters: List<Chapter>, val related: List<MediaItem>, val nextKey: String?, val commentsKey: String?, val chatKey: String?, val storyboard: Storyboard?,
     val queue: WatchQueue? = null, val resumeSeconds: Long? = null,
-    val authorThumbnail: String? = null, val rating: String? = null, val subscribed: Boolean? = null)
+    val authorThumbnail: String? = null, val rating: String? = null, val subscribed: Boolean? = null,
+    val viewCount: String? = null, val published: String? = null, val commentCount: String? = null)
 fun watchPage(body: String, videoId: String? = null): WatchPage {
     val root = jsonObject(body)
     val primary = root?.objects("videoPrimaryInfoRenderer")?.firstOrNull()
@@ -47,8 +48,13 @@ fun watchPage(body: String, videoId: String? = null): WatchPage {
         recommendations?.let(::contentItems).orEmpty(), recommendations?.let(::pageKey), commentKey(body), liveChat?.let(::pageKey),
         readStoryboard(root?.objects("playerStoryboardSpecRenderer")?.firstOrNull()?.text("spec")), queue, root?.let { resumeSeconds(it, queue) },
         owner?.thumbnail("thumbnail"),
-        root?.objects("likeButtonRenderer")?.firstOrNull()?.text("likeStatus"),
-        root?.objects("subscribeButtonRenderer")?.firstOrNull()?.bool("subscribed"))
+        root?.objects("likeButtonRenderer")?.firstOrNull()?.text("likeStatus")
+            ?: root?.objects("likeStatusEntity")?.firstOrNull()?.text("likeStatus"),
+        root?.objects("subscribeButtonRenderer")?.firstOrNull()?.bool("subscribed"),
+        primary?.objects("videoViewCountRenderer")?.firstOrNull()?.let { it.display("shortViewCount") ?: it.display("viewCount") },
+        primary?.display("dateText"),
+        root?.objects("engagementPanelSectionListRenderer")?.firstOrNull { it.text("panelIdentifier") == "engagement-panel-comments-section" }
+            ?.objects("engagementPanelTitleHeaderRenderer")?.firstOrNull()?.display("contextualInfo"))
 }
 @JvmOverloads
 fun loadWatch(videoId: String?, context: RequestContext = RequestContext(), continuation: String? = null,

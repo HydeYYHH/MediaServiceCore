@@ -34,7 +34,8 @@ data class Comment @JvmOverloads constructor(
     val isPinned: Boolean = false, val isHearted: Boolean? = null
 )
 
-data class CommentPage(val comments: List<Comment>, val nextKey: String?, val createKey: String?, val sortOptions: List<CommentSort> = emptyList())
+data class CommentPage(val comments: List<Comment>, val nextKey: String?, val createKey: String?, val sortOptions: List<CommentSort> = emptyList(),
+    val total: String? = null, val turnedOff: Boolean = false)
 
 private val emptyPage = CommentPage(emptyList(), null, null)
 
@@ -118,7 +119,7 @@ private fun postPage(query: PlayerQuery, post: (PlayerQuery) -> Pair<Int, String
 
 private fun findPanel(node: Json): Json.Obj? = when (node) {
     is Json.Obj -> {
-        if (node.text("panelIdentifier") == "engagement-panel-comments-section") node
+        if (node.text("panelIdentifier") == "engagement-panel-comments-section" && pageKey(node) != null) node
         else node.fields.values.asSequence().mapNotNull { findPanel(it) }.firstOrNull()
     }
     is Json.Arr -> node.items.asSequence().mapNotNull { findPanel(it) }.firstOrNull()
