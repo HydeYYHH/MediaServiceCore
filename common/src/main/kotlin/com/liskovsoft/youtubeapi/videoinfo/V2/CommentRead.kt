@@ -39,12 +39,16 @@ fun loadComments(videoId: String, context: RequestContext, continuation: String?
         if (!first.ok) return ReadResult(error = first.error)
         opened = first.value!!
         key = commentKey(opened.encode())
-        if (key == null) return ReadResult(CommentPage(emptyList(), null, null, commentSortOptions(opened)))
+        if (key == null) return ReadResult(CommentPage(emptyList(), null, null, commentSortOptions(opened),
+            total = watchPage(opened.encode(), videoId).commentCount,
+            turnedOff = opened.objects("messageRenderer").any { it.display("text")?.contains("Comments are turned off", true) == true }))
     }
     val response = requestObject(youtubeQuery(YOUTUBE_API + "next", payload("continuation" to key), context), http)
     if (!response.ok) return ReadResult(error = response.error)
     var page = commentPage(response.value!!.encode())
-    if (opened != null && page.sortOptions.isEmpty()) page = page.copy(sortOptions = commentSortOptions(opened))
+    if (opened != null) page = page.copy(
+        sortOptions = page.sortOptions.ifEmpty { commentSortOptions(opened) },
+        total = watchPage(opened.encode(), videoId).commentCount)
     return ReadResult(page)
 }
 fun loadCommentReplies(replyKey: String, context: RequestContext = RequestContext(), http: HttpClient = JvmHttpClient()): ReadResult<CommentPage> {

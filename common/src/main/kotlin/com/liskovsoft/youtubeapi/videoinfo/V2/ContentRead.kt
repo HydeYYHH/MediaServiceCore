@@ -43,6 +43,23 @@ private fun contentItem(type: String, item: Json.Obj): MediaItem? {
         else -> expected
     }
     val metadata = item.path("metadata", "lockupMetadataViewModel") ?: item.path("metadata", "tileMetadataRenderer")
+    val rows = (metadata?.path("metadata", "contentMetadataViewModel")?.fields?.get("metadataRows") as? Json.Arr)?.items.orEmpty()
+    val rowParts = rows.map { row ->
+        ((row as? Json.Obj)?.fields?.get("metadataParts") as? Json.Arr)?.items.orEmpty().mapNotNull { it as? Json.Obj }
+    }
+    val hasAuthor = metadata?.objects("decoratedAvatarViewModel")?.isNotEmpty() == true ||
+        rowParts.firstOrNull()?.any { part -> part.objects("browseEndpoint").any { it.text("browseId")?.startsWith("UC") == true } } == true
+    val author = rowParts.firstOrNull()?.firstOrNull()?.display("text").takeIf { hasAuthor }
+    val stats = if (hasAuthor) rowParts.drop(1).flatten() else rowParts.flatten()
+    val views = stats.firstOrNull { part ->
+        part.text("accessibilityLabel")?.contains("view", true) == true ||
+            part.path("text")?.text("accessibilityLabel")?.contains("view", true) == true ||
+            part.display("text")?.contains("view", true) == true ||
+            part.objects("leadingIcon").any { it.text("iconType") == "PLAY_ARROW" || it.text("name")?.startsWith("PLAY_ARROW") == true }
+    }?.display("text")
+    val published = stats.firstOrNull { part ->
+        part.display("text")?.let { it.contains("ago", true) || it.contains("Streamed", true) || it.contains("Premiered", true) } == true
+    }?.display("text")
     val image = item.path("contentImage", "thumbnailViewModel")
         ?: item.path("contentImage", "collectionThumbnailViewModel", "primaryThumbnail", "thumbnailViewModel")
     val badge = item.objects("thumbnailBadgeViewModel").firstOrNull()
@@ -51,7 +68,7 @@ private fun contentItem(type: String, item: Json.Obj): MediaItem? {
     return MediaItem(kind, id, item.display("title") ?: item.display("headline") ?: metadata?.display("title")
         ?: item.obj("overlayMetadata")?.display("primaryText"),
         item.display("ownerText") ?: item.display("shortBylineText") ?: item.display("longBylineText")
-            ?: item.obj("overlayMetadata")?.display("secondaryText"),
+            ?: item.obj("overlayMetadata")?.display("secondaryText") ?: author,
         item.thumbnail("thumbnail") ?: item.path("header", "tileHeaderRenderer")?.thumbnail("thumbnail") ?: image?.thumbnail("image"),
         item.display("lengthText") ?: badge?.text("text"),
         item.text("channelId") ?: item.objects("browseEndpoint").mapNotNull { it.text("browseId") }.firstOrNull { it.startsWith("UC") },
@@ -62,8 +79,8 @@ private fun contentItem(type: String, item: Json.Obj): MediaItem? {
         item.thumbnail("channelThumbnail")
             ?: item.objects("channelThumbnailWithLinkRenderer").firstOrNull()?.thumbnail("thumbnail")
             ?: item.objects("decoratedAvatarViewModel").firstOrNull()?.path("avatar", "avatarViewModel")?.thumbnail("image"),
-        item.display("viewCountText") ?: item.display("shortViewCountText"),
-        item.display("publishedTimeText"),
+        item.display("viewCountText") ?: item.display("shortViewCountText") ?: views,
+        item.display("publishedTimeText") ?: published,
         item.display("videoCountText") ?: item.display("videoCount")
             ?: item.objects("thumbnailOverlayBottomPanelRenderer").firstOrNull()?.display("text")
             ?: badge?.text("text")?.takeIf { kind == "playlist" })
