@@ -7,8 +7,12 @@ data class HttpRequest(val method: String, val url: String, val headers: Map<Str
 data class HttpReply(val status: Int, val body: String, val headers: Map<String, String> = emptyMap()) {
     fun header(name: String) = headers.entries.firstOrNull { it.key.equals(name, true) }?.value
 }
-enum class RequestFailure { INVALID, AUTH, HTTP, TRANSPORT, PARSE, CANCELLED, UNSUPPORTED }
-data class RequestError(val kind: RequestFailure, val code: String, val status: Int? = null, val retryAfterMs: Long? = null)
+enum class RequestFailure { INVALID, AUTH, HTTP, VERIFICATION, TRANSPORT, PARSE, CANCELLED, UNSUPPORTED }
+data class RequestError(
+    val kind: RequestFailure, val code: String, val status: Int? = null, val retryAfterMs: Long? = null,
+    /** Challenge redirect target for [RequestFailure.VERIFICATION], otherwise unused. */
+    val detail: String? = null,
+)
 data class ReadResult<T>(val value: T? = null, val error: RequestError? = null) {
     val ok: Boolean get() = error == null && value != null
 }
@@ -52,11 +56,29 @@ internal fun requestBody(request: HttpRequest, http: HttpClient): ReadResult<Str
         Thread.currentThread().interrupt()
         return ReadResult(error = RequestError(RequestFailure.CANCELLED, "cancelled"))
     } catch (_: Exception) { return ReadResult(error = RequestError(RequestFailure.TRANSPORT, "transport_failed")) }
+    if (reply.status in listOf(301, 302, 303, 307, 308)) {
+        // Redirects are not followed; a bounce to /sorry is the traffic challenge,
+        // an ordinary redirect is just a failed request.
+        reply.header("Location")?.let { location ->
+            runCatching { java.net.URI(request.url).resolve(location).toString() }.getOrNull()
+        }?.takeIf(::isTrafficChallengeLocation)?.let { location ->
+            return ReadResult(error = RequestError(RequestFailure.VERIFICATION, "traffic_challenge", reply.status, detail = location))
+        }
+    }
     if (reply.status !in 200..299) return ReadResult(error = RequestError(
         if (reply.status == 401 || reply.status == 403) RequestFailure.AUTH else RequestFailure.HTTP,
         "http_${reply.status}", reply.status, reply.header("Retry-After")?.toLongOrNull()?.times(1000)))
     return ReadResult(reply.body)
 }
+
+/** The traffic challenge lives on Google/YouTube hosts under `/sorry`; everything else is not one. */
+private fun isTrafficChallengeLocation(location: String): Boolean = try {
+    val uri = java.net.URI(location)
+    val host = uri.host?.lowercase().orEmpty()
+    uri.scheme.equals("https", ignoreCase = true) && uri.userInfo == null && uri.port in listOf(-1, 443) &&
+        (host == "www.google.com" || host == "google.com" || host.endsWith(".youtube.com") || host == "youtube.com") &&
+        (uri.path == "/sorry" || uri.path.orEmpty().startsWith("/sorry/"))
+} catch (_: Exception) { false }
 internal fun requestObject(query: PlayerQuery, http: HttpClient): ReadResult<Json.Obj> {
     val response = requestBody(query.request(), http)
     if (!response.ok) return ReadResult(error = response.error)
