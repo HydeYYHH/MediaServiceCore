@@ -19,6 +19,7 @@ fun loadAccounts(context: RequestContext, http: HttpClient = JvmHttpClient()): R
 class AccountSession(private var context: RequestContext = RequestContext()) {
     private var accounts = emptyList<Account>()
     @Synchronized fun snapshot() = context
+    @Synchronized fun accounts(): List<Account> = accounts.toList()
     @Synchronized fun replace(token: AccessToken, items: List<Account>) {
         accounts = items.toList()
         val selected = items.firstOrNull { it.selected && !it.disabled }
@@ -28,6 +29,7 @@ class AccountSession(private var context: RequestContext = RequestContext()) {
     @Synchronized fun select(id: String): Boolean {
         val selected = accounts.firstOrNull { it.id == id && !it.disabled } ?: return false
         context = context.copy(accountId = selected.id, onBehalfOfUser = selected.pageId, generation = context.generation + 1)
+        accounts = accounts.map { it.copy(selected = it.id == id) }
         return true
     }
     @Synchronized fun clear() { accounts = emptyList(); context = context.anonymous().copy(generation = context.generation + 1) }
