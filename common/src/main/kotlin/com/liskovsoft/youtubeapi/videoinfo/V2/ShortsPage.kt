@@ -5,15 +5,21 @@ fun shortsPage(body: String): BrowsePage {
     val root = jsonObject(body) ?: return BrowsePage(emptyList(), emptyList(), emptyList(), null)
     val header = root.objects("reelPlayerHeaderRenderer").firstOrNull()
     val first = root.path("replacementEndpoint", "reelWatchEndpoint")
-    val endpoints = listOfNotNull(first) + root.arr("entries").mapNotNull {
+    val currentId = root.path("overlay", "reelPlayerOverlayRenderer", "doubleTapLikeButton", "likeButtonRenderer", "target")?.text("videoId")
+    val current = currentId?.let { Json.Obj(mapOf("videoId" to Json.Str(it))) }
+    val title = root.objects("videoTitleHeaderViewModel").firstOrNull()?.display("videoTitle") ?: header?.display("reelTitleText")
+    val channel = root.objects("reelChannelBarViewModel").firstOrNull()
+    val description = root.objects("videoDescriptionHeaderRenderer").firstOrNull()
+    val endpoints = listOfNotNull(current, first) + root.arr("entries").mapNotNull {
         (it as? Json.Obj)?.path("command", "reelWatchEndpoint")
     }
     val items = endpoints.mapNotNull { endpoint ->
         val id = endpoint.text("videoId") ?: return@mapNotNull null
-        MediaItem("short", id, if (endpoint === first) header?.display("reelTitleText") else null,
-            if (endpoint === first) header?.display("channelTitleText") else null,
-            endpoint.thumbnail("thumbnail"), null,
-            if (endpoint === first) header?.path("channelNavigationEndpoint", "browseEndpoint")?.text("browseId") else null,
+        val primary = endpoint === (current ?: first)
+        MediaItem("short", id, if (primary) title else null,
+            if (primary) channel?.display("channelName") ?: header?.display("channelTitleText") else null,
+            endpoint.thumbnail("thumbnail") ?: "https://i.ytimg.com/vi/$id/hqdefault.jpg", null,
+            if (primary) (description ?: header)?.path("channelNavigationEndpoint", "browseEndpoint")?.text("browseId") else null,
             params = endpoint.text("params"), endpoint = actionEndpoint(Json.Obj(mapOf("reelWatchEndpoint" to endpoint))),
             playerParams = endpoint.text("playerParams"))
     }.distinctBy { it.id }

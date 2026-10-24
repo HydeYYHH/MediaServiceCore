@@ -43,6 +43,10 @@ private fun contentItem(type: String, item: Json.Obj): MediaItem? {
         else -> expected
     }
     val metadata = item.path("metadata", "lockupMetadataViewModel") ?: item.path("metadata", "tileMetadataRenderer")
+    val tileLines = metadata?.arr("lines").orEmpty().map { line ->
+        (line as? Json.Obj)?.obj("lineRenderer")?.objects("lineItemRenderer").orEmpty()
+            .mapNotNull { it.display("text") }.filter { it.isNotBlank() && it != "•" }
+    }
     val rows = (metadata?.path("metadata", "contentMetadataViewModel")?.fields?.get("metadataRows") as? Json.Arr)?.items.orEmpty()
     val rowParts = rows.map { row ->
         ((row as? Json.Obj)?.fields?.get("metadataParts") as? Json.Arr)?.items.orEmpty().mapNotNull { it as? Json.Obj }
@@ -68,9 +72,10 @@ private fun contentItem(type: String, item: Json.Obj): MediaItem? {
     return MediaItem(kind, id, item.display("title") ?: item.display("headline") ?: metadata?.display("title")
         ?: item.obj("overlayMetadata")?.display("primaryText"),
         item.display("ownerText") ?: item.display("shortBylineText") ?: item.display("longBylineText")
-            ?: item.obj("overlayMetadata")?.display("secondaryText") ?: author,
+            ?: item.obj("overlayMetadata")?.display("secondaryText") ?: author ?: tileLines.firstOrNull()?.firstOrNull(),
         item.thumbnail("thumbnail") ?: item.path("header", "tileHeaderRenderer")?.thumbnail("thumbnail") ?: image?.thumbnail("image"),
-        item.display("lengthText") ?: badge?.text("text"),
+        item.display("lengthText") ?: badge?.text("text")
+            ?: item.objects("thumbnailOverlayTimeStatusRenderer").firstOrNull()?.display("text"),
         item.text("channelId") ?: item.objects("browseEndpoint").mapNotNull { it.text("browseId") }.firstOrNull { it.startsWith("UC") },
         item.text("playlistId") ?: watch?.text("playlistId"), browse?.text("params"),
         actionEndpoint(command), pageActions(item), watch?.long("startTimeSeconds"), progress?.coerceIn(0, 100),
@@ -79,8 +84,8 @@ private fun contentItem(type: String, item: Json.Obj): MediaItem? {
         item.thumbnail("channelThumbnail")
             ?: item.objects("channelThumbnailWithLinkRenderer").firstOrNull()?.thumbnail("thumbnail")
             ?: item.objects("decoratedAvatarViewModel").firstOrNull()?.path("avatar", "avatarViewModel")?.thumbnail("image"),
-        item.display("viewCountText") ?: item.display("shortViewCountText") ?: views,
-        item.display("publishedTimeText") ?: published,
+        item.display("viewCountText") ?: item.display("shortViewCountText") ?: views ?: tileLines.drop(1).flatten().firstOrNull { it.contains("view", true) },
+        item.display("publishedTimeText") ?: published ?: tileLines.drop(1).flatten().firstOrNull { it.contains("ago", true) || it.contains("Streamed", true) },
         item.display("videoCountText") ?: item.display("videoCount")
             ?: item.objects("thumbnailOverlayBottomPanelRenderer").firstOrNull()?.display("text")
             ?: badge?.text("text")?.takeIf { kind == "playlist" })

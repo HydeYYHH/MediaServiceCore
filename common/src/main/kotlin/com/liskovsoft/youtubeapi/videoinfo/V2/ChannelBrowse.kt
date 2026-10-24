@@ -36,3 +36,18 @@ fun loadChannel(channelId: String, context: RequestContext = RequestContext(), p
     val result = requestObject(channelQuery(channelId, context, params, continuation, search), http)
     return if (result.ok) ReadResult(channelPage(result.value!!.encode(), channelId)) else ReadResult(error = result.error)
 }
+
+/** `@handle` names resolve through the navigation endpoint; a plain channel id passes through. */
+fun resolveChannelId(id: String, context: RequestContext = RequestContext(), http: HttpClient = JvmHttpClient()): ReadResult<String> {
+    if (!id.startsWith("@")) return ReadResult(id)
+    val template = channelQuery("UC", context)
+    val root = jsonObject(template.body) ?: return ReadResult(error = RequestError(RequestFailure.PARSE, "channel_not_found"))
+    val fields = LinkedHashMap(root.fields)
+    fields.remove("browseId")
+    fields["url"] = Json.Str("https://www.youtube.com/" + id)
+    val reply = requestObject(template.copy(url = YOUTUBE_API + "navigation/resolve_url", body = Json.Obj(fields).encode()), http)
+    if (!reply.ok) return ReadResult(error = reply.error)
+    val resolved = reply.value!!.objects("browseEndpoint").firstNotNullOfOrNull { it.text("browseId") }
+        ?: return ReadResult(error = RequestError(RequestFailure.PARSE, "channel_not_found"))
+    return ReadResult(resolved)
+}

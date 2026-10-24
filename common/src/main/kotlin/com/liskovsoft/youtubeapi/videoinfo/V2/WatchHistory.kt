@@ -19,7 +19,8 @@ class WatchHistory(private val http: HttpClient = JvmHttpClient(), private val c
     private val positions = java.util.LinkedHashMap<String, Long>()
     @Synchronized fun update(videoId: String, positionMs: Long, durationMs: Long, tracking: PlayerTracking,
         context: RequestContext, http: HttpClient = this.http): ReadResult<Boolean> {
-        if (!context.signedIn) return ReadResult(error = RequestError(RequestFailure.AUTH, "sign_in_required"))
+        if (!context.signedIn && context.visitor.isNullOrBlank())
+            return ReadResult(error = RequestError(RequestFailure.AUTH, "missing_watch_identity"))
         if (!videoIdAccepted(videoId) || durationMs <= 0 || positionMs !in 0..durationMs)
             return ReadResult(error = RequestError(RequestFailure.INVALID, "invalid_watch_position"))
         val key = context.scope() + "\u0000" + videoId
@@ -32,8 +33,9 @@ class WatchHistory(private val http: HttpClient = JvmHttpClient(), private val c
             val fields = listOf("docid" to videoId, "cpn" to cpn, "cmt" to (positionMs / 1000.0).toString(), "len" to (durationMs / 1000.0).toString(),
                 "st" to ((positions[key] ?: positionMs) / 1000.0).toString(), "et" to (positionMs / 1000.0).toString())
             for ((name, value) in fields) url = urlWithParameter(url, name, value)
-            val headers = if (!context.accessToken.isNullOrBlank()) mapOf("Authorization" to "Bearer " + context.accessToken)
+            val headers = (if (!context.accessToken.isNullOrBlank()) mapOf("Authorization" to "Bearer " + context.accessToken)
                 else context.webSession?.headers().orEmpty()
+                ) + (context.visitor?.let { mapOf("X-Goog-Visitor-Id" to it) } ?: emptyMap())
             return requestBody(HttpRequest("GET", url, headers), http)
         }
         if (key !in positions) {

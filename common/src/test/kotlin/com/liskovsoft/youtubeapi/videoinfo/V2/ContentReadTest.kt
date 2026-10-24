@@ -4,6 +4,18 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class ContentReadTest {
+    @Test fun readsTileMetadataLinesAndDuration() {
+        val body = """{"contents":[{"tileRenderer":{"onSelectCommand":{"watchEndpoint":{"videoId":"video"}},"header":{"tileHeaderRenderer":{"thumbnail":{"thumbnails":[{"url":"https://image"}]},"thumbnailOverlays":[{"thumbnailOverlayTimeStatusRenderer":{"text":{"simpleText":"3:42"}}}]}},"metadata":{"tileMetadataRenderer":{"title":{"simpleText":"A song"},"lines":[{"lineRenderer":{"items":[{"lineItemRenderer":{"text":{"runs":[{"text":"Artist","navigationEndpoint":{"browseEndpoint":{"browseId":"UCartist"}}}]}}}]}},{"lineRenderer":{"items":[{"lineItemRenderer":{"text":{"simpleText":"12M views"}}},{"lineItemRenderer":{"text":{"simpleText":"•"}}},{"lineItemRenderer":{"text":{"simpleText":"2 days ago"}}}]}}]}}}}]}"""
+        val item = searchPage(body).items.single()
+        assertEquals("A song", item.title)
+        assertEquals("Artist", item.author)
+        assertEquals("UCartist", item.channelId)
+        assertEquals("12M views", item.viewCount)
+        assertEquals("2 days ago", item.published)
+        assertEquals("3:42", item.duration)
+        assertEquals("https://image", item.thumbnail)
+    }
+
     @Test fun readsModernLockupsAndKeepsTheirActions() {
         val body = """{"contents":[{"lockupViewModel":{"contentId":"v","metadata":{"lockupMetadataViewModel":{"title":{"content":"Modern"},"menuButton":{"buttonViewModel":{"title":"Hide","onTap":{"innertubeCommand":{"feedbackEndpoint":{"feedbackToken":"opaque"}}}}}}},"contentImage":{"thumbnailViewModel":{"image":{"sources":[{"url":"https://image"}]}}},"rendererContext":{"commandContext":{"onTap":{"innertubeCommand":{"watchEndpoint":{"videoId":"v","startTimeSeconds":12,"playerParams":"player"}}}}}}},{"shortsLockupViewModel":{"overlayMetadata":{"primaryText":{"content":"Short"}},"onTap":{"innertubeCommand":{"reelWatchEndpoint":{"videoId":"short"}}}}},{"tileRenderer":{"onSelectCommand":{"browseEndpoint":{"browseId":"UCchannel","params":"tab"}}}}]}"""
         val items = searchPage(body).items
