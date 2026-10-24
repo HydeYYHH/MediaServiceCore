@@ -11,7 +11,14 @@ fun homeQuery(section: HomeSection = HomeSection.HOME, context: RequestContext =
         HomeSection.KIDS -> "FEkids_home"
         else -> "FEtopics_" + section.name.toLowerCase(java.util.Locale.ROOT)
     }
-    return browseQuery(id, context, if (section == HomeSection.TRENDING) "6gQJRkVleHBsb3Jl" else null, continuation)
+    val fields = if (continuation != null) payload("continuation" to continuation)
+        else payload("browseId" to id, "params" to if (section == HomeSection.TRENDING) "6gQJRkVleHBsb3Jl" else null)
+    // Topic and trending ids are dead for the WEB client (HTTP 400); the TV client serves them.
+    // FEkids_home fails on both (500/400) and stays on the legacy path.
+    val query = if (section == HomeSection.HOME || section == HomeSection.KIDS)
+        youtubeQuery(YOUTUBE_API + "browse", fields, context)
+    else contextualQuery(tvQuery(YOUTUBE_API + "browse", fields, context.visitor), context)
+    return query
 }
 fun loadHome(section: HomeSection = HomeSection.HOME, context: RequestContext = RequestContext(), continuation: String? = null,
     http: HttpClient = JvmHttpClient()): ReadResult<BrowsePage> {

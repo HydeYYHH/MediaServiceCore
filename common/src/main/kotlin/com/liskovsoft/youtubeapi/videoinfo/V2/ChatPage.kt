@@ -1,13 +1,15 @@
 package com.liskovsoft.youtubeapi.videoinfo.V2
 
-data class ChatMessage(val id: String?, val author: String?, val text: String?, val photo: String?, val timestampUs: Long?, val kind: String)
+data class ChatMessage(val id: String?, val author: String?, val text: String?, val photo: String?, val timestampUs: Long?, val kind: String,
+    val authorId: String? = null)
 data class ChatRemoval(val messageId: String?, val authorId: String?)
 sealed class ChatAction {
     data class Add(val message: ChatMessage) : ChatAction()
     data class Remove(val removal: ChatRemoval) : ChatAction()
 }
 data class ChatPage @JvmOverloads constructor(val messages: List<ChatMessage>, val removals: List<ChatRemoval>, val nextKey: String?, val waitMs: Long,
-    val actions: List<ChatAction> = emptyList(), val events: List<ChatEvent> = emptyList(), val replay: Boolean = false)
+    val actions: List<ChatAction> = emptyList(), val events: List<ChatEvent> = emptyList(), val replay: Boolean = false,
+    val sendParams: String? = null)
 fun chatPage(body: String): ChatPage {
     val root = jsonObject(body)
     val continuation = root?.path("continuationContents","liveChatContinuation") ?: root
@@ -22,7 +24,8 @@ fun chatPage(body: String): ChatPage {
                         kind == "replayChatItemAction" && item != null -> visit(item.fields["actions"] ?: Json.Arr(emptyList()),
                             item.long("videoOffsetTimeMsec")?.takeIf { it >= 0 })
                         kind in kinds && item!=null -> events.add(ChatEvent(offsetMs, ChatAction.Add(ChatMessage(item.text("id"),item.display("authorName"),
-                            item.display("message") ?: item.display("headerSubtext"),item.thumbnail("authorPhoto"),item.long("timestampUsec"),kind))))
+                            item.display("message") ?: item.display("headerSubtext"),item.thumbnail("authorPhoto"),item.long("timestampUsec"),kind,
+                            item.text("authorExternalChannelId")))))
                         kind=="markChatItemAsDeletedAction" && item!=null -> events.add(ChatEvent(offsetMs, ChatAction.Remove(ChatRemoval(item.text("targetItemId"),null))))
                         kind=="markChatItemsByAuthorAsDeletedAction" && item!=null -> events.add(ChatEvent(offsetMs, ChatAction.Remove(ChatRemoval(null,item.text("externalChannelId")))))
                         else -> visit(value, offsetMs)
@@ -42,7 +45,8 @@ fun chatPage(body: String): ChatPage {
         ?: continuation?.objects("invalidationContinuationData")?.firstOrNull()
         ?: continuation?.objects("reloadContinuationData")?.firstOrNull()
     return ChatPage(messages,removals,next?.text("continuation"),(next?.long("timeoutMs") ?: 1000).coerceIn(100,60000),actions,events,
-        replay != null || events.any { it.offsetMs != null })
+        replay != null || events.any { it.offsetMs != null },
+        continuation?.objects("sendLiveChatMessageEndpoint")?.firstOrNull()?.text("params"))
 }
 fun loadChat(continuation: String, context: RequestContext = RequestContext(), http: HttpClient = JvmHttpClient()): ReadResult<ChatPage> {
     if (continuation.isBlank()) return ReadResult(error=RequestError(RequestFailure.INVALID,"missing_chat_key"))

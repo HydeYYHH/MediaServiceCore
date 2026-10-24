@@ -9,4 +9,19 @@ class HomeBrowseTest {
         val shorts = homeQuery(HomeSection.SHORTS, continuation = "seq")
         assertTrue(shorts.url.endsWith("reel/reel_watch_sequence")); assertEquals("seq", jsonObject(shorts.body)!!.text("sequenceParams"))
     }
+    @Test fun servesTopicSectionsWithTheTvClientBecauseWebRejectsThem() {
+        for (section in listOf(HomeSection.MUSIC, HomeSection.GAMING, HomeSection.NEWS, HomeSection.SPORTS, HomeSection.LIVE, HomeSection.MOVIES, HomeSection.TRENDING)) {
+            val query = homeQuery(section)
+            val client = jsonObject(query.body)!!.path("context", "client")!!
+            assertEquals("$section", "TVHTML5", client.text("clientName"))
+            assertEquals("$section", "7", query.headers["X-Youtube-Client-Name"])
+        }
+        // Continuations must stay in the same client lane that issued the token.
+        val next = homeQuery(HomeSection.MUSIC, continuation = "next")
+        assertEquals("TVHTML5", jsonObject(next.body)!!.path("context", "client")!!.text("clientName"))
+        assertEquals("next", jsonObject(next.body)!!.text("continuation"))
+        // Home keeps the web lane: anonymous FEwhat_to_watch works there and signed-in "default"
+        // already upgrades through the token branch of youtubeQuery.
+        assertEquals("WEB", jsonObject(homeQuery(HomeSection.HOME).body)!!.path("context", "client")!!.text("clientName"))
+    }
 }

@@ -40,11 +40,14 @@ internal fun contextualQuery(query: PlayerQuery, context: RequestContext): Playe
     return query.copy(headers = headers, body = Json.Obj(root.fields + ("context" to Json.Obj(finalContext))).encode())
 }
 internal fun youtubeQuery(endpoint: String, fields: String, context: RequestContext): PlayerQuery {
-    val template = if (context.accessToken == null) webQuery(endpoint, fields, context.visitor) else {
-        val player = playerQuery(PlayerClient.TV, "context", context.visitor)
-        val client = jsonObject(player.body)!!.obj("context")!!
-        PlayerQuery(endpoint, player.headers, "{\"context\":${client.encode()}${if (fields.isEmpty()) "" else "," + fields}}")
-    }
+    val template = if (context.accessToken == null) webQuery(endpoint, fields, context.visitor) else tvQuery(endpoint, fields, context.visitor)
     return contextualQuery(template, context)
+}
+// Some endpoints (FEtopics_*, FEtrending) reject the WEB client with HTTP 400 but serve the TV client;
+// verified against the live service 2026-10-23.
+internal fun tvQuery(endpoint: String, fields: String, visitor: String?): PlayerQuery {
+    val player = playerQuery(PlayerClient.TV, "context", visitor)
+    val client = jsonObject(player.body)!!.obj("context")!!
+    return PlayerQuery(endpoint, player.headers, "{\"context\":${client.encode()}${if (fields.isEmpty()) "" else "," + fields}}")
 }
 internal const val YOUTUBE_API = "https://www.youtube.com/youtubei/v1/"

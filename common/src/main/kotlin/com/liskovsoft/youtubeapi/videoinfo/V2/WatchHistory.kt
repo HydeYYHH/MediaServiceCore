@@ -1,9 +1,10 @@
 package com.liskovsoft.youtubeapi.videoinfo.V2
 
 data class PlayerTracking(val playbackUrl: String?, val watchTimeUrl: String?)
-fun playerTracking(body: String): PlayerTracking {
-    val root = jsonObject(body)?.obj("playbackTracking")
-    return PlayerTracking(root?.obj("videostatsPlaybackUrl")?.text("baseUrl"), root?.obj("videostatsWatchtimeUrl")?.text("baseUrl"))
+fun playerTracking(body: String): PlayerTracking = playerTracking(jsonObject(body))
+internal fun playerTracking(root: Json.Obj?): PlayerTracking {
+    val tracking = root?.obj("playbackTracking")
+    return PlayerTracking(tracking?.obj("videostatsPlaybackUrl")?.text("baseUrl"), tracking?.obj("videostatsWatchtimeUrl")?.text("baseUrl"))
 }
 fun setWatchHistory(enabled: Boolean, context: RequestContext, http: HttpClient = JvmHttpClient()) =
     signedAction("history/" + if (enabled) "resume_watch_history" else "pause_watch_history", "\"nop\":\"false\"", context, http)
@@ -17,7 +18,7 @@ fun removeWatchHistory(feedbackToken: String, context: RequestContext, http: Htt
 class WatchHistory(private val http: HttpClient = JvmHttpClient(), private val cpn: String = java.util.UUID.randomUUID().toString().replace("-", "").take(16)) {
     private val positions = java.util.LinkedHashMap<String, Long>()
     @Synchronized fun update(videoId: String, positionMs: Long, durationMs: Long, tracking: PlayerTracking,
-        context: RequestContext): ReadResult<Boolean> {
+        context: RequestContext, http: HttpClient = this.http): ReadResult<Boolean> {
         if (!context.signedIn) return ReadResult(error = RequestError(RequestFailure.AUTH, "sign_in_required"))
         if (!videoIdAccepted(videoId) || durationMs <= 0 || positionMs !in 0..durationMs)
             return ReadResult(error = RequestError(RequestFailure.INVALID, "invalid_watch_position"))

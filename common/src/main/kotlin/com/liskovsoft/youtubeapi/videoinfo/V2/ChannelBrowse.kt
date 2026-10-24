@@ -1,7 +1,7 @@
 package com.liskovsoft.youtubeapi.videoinfo.V2
 
 data class ChannelPage(val id: String?, val title: String?, val description: String?, val thumbnail: String?, val subscriberCount: String?, val page: BrowsePage,
-    val handle: String? = null, val banner: String? = null, val videoCount: String? = null)
+    val handle: String? = null, val banner: String? = null, val videoCount: String? = null, val subscribed: Boolean? = null)
 fun channelPage(body: String, channelId: String? = null): ChannelPage {
     val root = jsonObject(body)
     val metadata = root?.objects("channelMetadataRenderer")?.firstOrNull()
@@ -10,6 +10,12 @@ fun channelPage(body: String, channelId: String? = null): ChannelPage {
     val labels = modern?.path("metadata", "contentMetadataViewModel")?.let { content ->
         content.objects("text").mapNotNull { it.text("content") }
     }.orEmpty()
+    // Subscribe toggle: legacy headers carry explicit state; the modern anonymous page only
+    // offers a sign-in modal, where null means "not observable", not "unsubscribed".
+    val subscribed = root?.objects("subscribeButtonRenderer")?.firstOrNull()?.bool("subscribed")
+        ?: root?.objects("toggleButtonRenderer")?.firstOrNull { toggle ->
+            toggle.objects("subscribeEndpoint").isNotEmpty() || toggle.objects("unsubscribeEndpoint").isNotEmpty()
+        }?.bool("isToggled")
     return ChannelPage(metadata?.text("externalId") ?: header?.text("channelId") ?: channelId,
         metadata?.text("title") ?: header?.text("title") ?: modern?.objects("dynamicTextViewModel")?.firstOrNull()?.display("text"),
         metadata?.text("description") ?: modern?.objects("descriptionPreviewViewModel")?.firstOrNull()?.display("description"),
@@ -17,7 +23,7 @@ fun channelPage(body: String, channelId: String? = null): ChannelPage {
         header?.display("subscriberCountText") ?: labels.firstOrNull { it.contains("subscriber", true) }, browsePage(body),
         header?.display("channelHandleText") ?: labels.firstOrNull { it.startsWith("@") },
         header?.thumbnail("banner") ?: modern?.objects("imageBannerViewModel")?.firstOrNull()?.thumbnail("image"),
-        header?.display("videosCountText") ?: labels.firstOrNull { it.contains("video", true) })
+        header?.display("videosCountText") ?: labels.firstOrNull { it.contains("video", true) }, subscribed)
 }
 fun channelQuery(channelId: String, context: RequestContext = RequestContext(), params: String? = null,
     continuation: String? = null, search: String? = null): PlayerQuery {

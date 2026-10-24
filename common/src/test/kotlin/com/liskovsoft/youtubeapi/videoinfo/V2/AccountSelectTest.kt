@@ -13,6 +13,17 @@ class AccountSelectTest {
         assertFalse(session.select("missing"))
         session.clear(); assertNull(session.snapshot().accessToken)
     }
+    @Test fun exposesTheCachedAccountListForSwitchers() {
+        val body = """{"items":[{"accountItem":{"accountName":{"simpleText":"Owner"},"isSelected":true}},{"accountItem":{"accountName":{"simpleText":"Brand"},"serviceEndpoint":{"selectActiveIdentityEndpoint":{"supportedTokens":[{"pageIdToken":{"pageId":"brand-id"}}]}}}}]}"""
+        val session = AccountSession()
+        assertTrue(session.accounts().isEmpty())
+        session.replace(AccessToken("a", "r", 100), readAccounts(body))
+        assertEquals(listOf("Owner", "Brand"), session.accounts().map { it.name })
+        session.select("brand-id")
+        assertEquals(2, session.accounts().size)
+        session.clear()
+        assertTrue(session.accounts().isEmpty())
+    }
     @Test fun requiresSignInBeforeRequestingAccounts() {
         val never = object : HttpClient { override fun execute(request: HttpRequest): HttpReply = error("must not run") }
         assertEquals(RequestFailure.AUTH, loadAccounts(RequestContext(), never).error!!.kind)

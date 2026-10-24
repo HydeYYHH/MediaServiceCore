@@ -12,4 +12,12 @@ class PlayerDetailsTest {
         assertNotNull(result.client)
         assertNull(playerAnswer("{}").details)
     }
+    @Test fun detailsCarryThePlaybackTrackingUrls() {
+        val body = """{"videoDetails":{"videoId":"v","title":"T"},"playbackTracking":{"videostatsPlaybackUrl":{"baseUrl":"https://www.youtube.com/api/stats/playback?ei=e"},"videostatsWatchtimeUrl":{"baseUrl":"https://www.youtube.com/api/stats/watchtime?ei=e"}}}"""
+        val details = readPlayerDetails(jsonObject(body)!!)!!
+        assertEquals("https://www.youtube.com/api/stats/playback?ei=e", details.tracking?.playbackUrl)
+        assertEquals("https://www.youtube.com/api/stats/watchtime?ei=e", details.tracking?.watchTimeUrl)
+        assertEquals(playerTracking(body), details.tracking)
+        assertNull(readPlayerDetails(jsonObject("""{"videoDetails":{"videoId":"v"}}""")!!)!!.tracking?.playbackUrl)
+    }
 }
