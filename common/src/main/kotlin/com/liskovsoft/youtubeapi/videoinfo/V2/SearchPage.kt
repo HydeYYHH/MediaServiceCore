@@ -7,10 +7,11 @@ data class MediaItem @JvmOverloads constructor(val kind: String, val id: String,
     val authorThumbnail: String? = null, val viewCount: String? = null, val published: String? = null, val videoCountText: String? = null)
 data class MediaGroup @JvmOverloads constructor(val title: String?, val items: List<MediaItem>, val nextKey: String?, val actions: List<PageAction> = emptyList())
 data class SearchPage @JvmOverloads constructor(val items: List<MediaItem>, val groups: List<MediaGroup>, val nextKey: String?,
-    val messages: List<String> = emptyList(), val actions: List<PageAction> = emptyList())
+    val messages: List<String> = emptyList(), val actions: List<PageAction> = emptyList(),
+    val filters: List<SearchFilter> = emptyList())
 fun searchPage(body: String): SearchPage {
     val root = jsonObject(body) ?: return SearchPage(emptyList(), emptyList(), null)
-    return SearchPage(contentItems(root), pageGroups(root), pageKey(root), pageMessages(root), pageActions(root))
+    return SearchPage(contentItems(root), pageGroups(root), pageKey(root), pageMessages(root), pageActions(root), searchFilters(root))
 }
 fun searchQuery(text: String?, context: RequestContext = RequestContext(), params: String? = null, continuation: String? = null): PlayerQuery {
     if (continuation.isNullOrBlank() && text.isNullOrBlank()) return PlayerQuery("", emptyMap(), "")

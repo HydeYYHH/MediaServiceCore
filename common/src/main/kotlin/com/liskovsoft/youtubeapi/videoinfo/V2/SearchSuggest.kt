@@ -1,8 +1,9 @@
 package com.liskovsoft.youtubeapi.videoinfo.V2
 
 data class SearchFilter(val title: String?, val group: String?, val params: String, val selected: Boolean)
-fun searchFilters(body: String): List<SearchFilter> {
-    val root = jsonObject(body) ?: return emptyList()
+fun searchFilters(body: String): List<SearchFilter> = searchFilters(jsonObject(body))
+internal fun searchFilters(root: Json.Obj?): List<SearchFilter> {
+    root ?: return emptyList()
     return root.objects("searchFilterGroupRenderer").flatMap { group ->
         group.objects("searchFilterRenderer").mapNotNull { filter ->
             val params = filter.path("navigationEndpoint", "searchEndpoint")?.text("params") ?: return@mapNotNull null

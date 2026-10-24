@@ -20,8 +20,9 @@ class HomeBrowseTest {
         val next = homeQuery(HomeSection.MUSIC, continuation = "next")
         assertEquals("TVHTML5", jsonObject(next.body)!!.path("context", "client")!!.text("clientName"))
         assertEquals("next", jsonObject(next.body)!!.text("continuation"))
-        // Home keeps the web lane: anonymous FEwhat_to_watch works there and signed-in "default"
-        // already upgrades through the token branch of youtubeQuery.
-        assertEquals("WEB", jsonObject(homeQuery(HomeSection.HOME).body)!!.path("context", "client")!!.text("clientName"))
+        val home = homeQuery(HomeSection.HOME, RequestContext(visitor = "visitor"))
+        assertEquals("TVHTML5", jsonObject(home.body)!!.path("context", "client")!!.text("clientName"))
+        assertEquals("default", jsonObject(home.body)!!.text("browseId"))
+        assertEquals("visitor", home.headers["X-Goog-Visitor-Id"])
     }
 }

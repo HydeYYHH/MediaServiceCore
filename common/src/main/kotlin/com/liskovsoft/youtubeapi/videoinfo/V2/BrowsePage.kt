@@ -2,7 +2,7 @@ package com.liskovsoft.youtubeapi.videoinfo.V2
 
 data class BrowseTab(val title: String?, val browseId: String?, val params: String?, val selected: Boolean)
 data class BrowsePage @JvmOverloads constructor(val items: List<MediaItem>, val groups: List<MediaGroup>, val tabs: List<BrowseTab>, val nextKey: String?,
-    val messages: List<String> = emptyList(), val actions: List<PageAction> = emptyList())
+    val messages: List<String> = emptyList(), val actions: List<PageAction> = emptyList(), val visitor: String? = null)
 fun browsePage(body: String): BrowsePage {
     val root = jsonObject(body) ?: return BrowsePage(emptyList(), emptyList(), emptyList(), null)
     val tabs = root.objects("tabRenderer").map {
@@ -11,7 +11,8 @@ fun browsePage(body: String): BrowsePage {
     }
     val selected = root.objects("tabRenderer").firstOrNull { it.bool("selected") == true }?.obj("content") ?: root
     val messages = pageMessages(selected)
-    return BrowsePage(contentItems(selected), pageGroups(selected), tabs, pageKey(selected), messages, pageActions(selected))
+    return BrowsePage(contentItems(selected), pageGroups(selected), tabs, pageKey(selected), messages, pageActions(selected),
+        root.obj("responseContext")?.text("visitorData"))
 }
 fun browseQuery(browseId: String?, context: RequestContext = RequestContext(), params: String? = null, continuation: String? = null): PlayerQuery {
     if (browseId.isNullOrBlank() && continuation.isNullOrBlank()) return PlayerQuery("", emptyMap(), "")
