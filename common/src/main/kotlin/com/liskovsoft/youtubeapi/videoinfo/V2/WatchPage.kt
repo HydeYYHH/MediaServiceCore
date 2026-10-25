@@ -1,6 +1,6 @@
 package com.liskovsoft.youtubeapi.videoinfo.V2
 
-data class Chapter(val title: String?, val startMs: Long)
+data class Chapter(val title: String?, val startMs: Long, val thumbnail: String? = null)
 data class StoryboardTile(val url: String, val column: Int, val row: Int, val width: Int, val height: Int)
 data class StoryboardLevel(val width: Int, val height: Int, val count: Int, val columns: Int, val rows: Int,
     val intervalMs: Long, val name: String, val signature: String)
@@ -35,9 +35,9 @@ fun watchPage(body: String, videoId: String? = null): WatchPage {
     val primary = root?.objects("videoPrimaryInfoRenderer")?.firstOrNull()
     val secondary = root?.objects("videoSecondaryInfoRenderer")?.firstOrNull()
     val owner = secondary?.objects("videoOwnerRenderer")?.firstOrNull()
-    val chapters = (root?.objects("chapterRenderer").orEmpty().mapNotNull { it.long("timeRangeStartMillis")?.let { ms -> Chapter(it.display("title"), ms) } } +
+    val chapters = (root?.objects("chapterRenderer").orEmpty().mapNotNull { it.long("timeRangeStartMillis")?.let { ms -> Chapter(it.display("title"), ms, it.thumbnail("thumbnail")) } } +
         root?.objects("macroMarkersListItemRenderer").orEmpty().mapNotNull {
-            it.path("onTap", "watchEndpoint")?.long("startTimeSeconds")?.let { sec -> Chapter(it.display("title"), sec * 1000) }
+            it.path("onTap", "watchEndpoint")?.long("startTimeSeconds")?.let { sec -> Chapter(it.display("title"), sec * 1000, it.thumbnail("thumbnail")) }
         }).filter { it.startMs >= 0 }.distinctBy { it.startMs }.sortedBy { it.startMs }
     val recommendations = root?.path("contents", "twoColumnWatchNextResults", "secondaryResults", "secondaryResults") ?: root
     val liveChat = root?.objects("liveChatRenderer")?.firstOrNull()

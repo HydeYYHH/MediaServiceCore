@@ -33,12 +33,18 @@ fun playlistPage(body: String): PlaylistPage {
     val root = jsonObject(body) ?: return emptyPage
     val header = findHeader(root)
     val videos = ArrayList<PlaylistVideo>()
-    collectVideos(root, videos)
+    val primary = root.path("contents", "twoColumnBrowseResultsRenderer")
+        ?: root.path("contents", "singleColumnBrowseResultsRenderer")
+        ?: root.obj("continuationContents") ?: root
+    collectVideos(primary, videos)
+    val modern = root.path("header", "pageHeaderRenderer")
     return PlaylistPage(
-        displayText(header?.obj("title")),
-        displayText(header?.obj("ownerText")),
+        displayText(header?.obj("title"))
+            ?: root.path("metadata", "playlistMetadataRenderer")?.text("title") ?: modern?.text("pageTitle"),
+        displayText(header?.obj("ownerText"))
+            ?: modern?.objects("avatarStackViewModel")?.firstOrNull()?.display("text"),
         videos,
-        listContinuation(root) ?: appendContinuation(root)
+        listContinuation(primary) ?: appendContinuation(root) ?: pageKey(primary)
     )
 }
 
@@ -63,8 +69,26 @@ private fun collectVideos(node: Json, videos: ArrayList<PlaylistVideo>) {
         is Json.Obj -> {
             val renderer = node.obj("playlistVideoRenderer")
             val videoId = renderer?.text("videoId")?.takeIf { it.isNotEmpty() }
-            if (renderer != null && videoId != null) videos.add(playlistVideo(renderer, videoId))
-            for (child in node.fields.values) collectVideos(child, videos)
+            if (renderer != null && videoId != null) {
+                videos.add(playlistVideo(renderer, videoId))
+                return
+            }
+            node.obj("lockupViewModel")?.let { modern ->
+                val watch = modern.path("rendererContext", "commandContext", "onTap", "innertubeCommand", "watchEndpoint")
+                    ?: modern.path("onTap", "innertubeCommand", "watchEndpoint")
+                val id = watch?.text("videoId") ?: modern.text("contentId")
+                if (id != null && modern.text("contentType")?.contains("VIDEO") == true) {
+                    val item = contentItems(Json.Obj(mapOf("lockupViewModel" to modern))).firstOrNull()
+                    if (item != null) videos.add(PlaylistVideo(id, item.title, item.author, item.duration,
+                        watch?.int("index")?.plus(1)?.toString(), item.thumbnail,
+                        watch?.text("playlistSetVideoId") ?: modern.text("setVideoId")))
+                }
+                return
+            }
+            for ((name, child) in node.fields) {
+                if (name !in setOf("menu", "header", "secondaryContents", "shelfRenderer", "engagementPanels"))
+                    collectVideos(child, videos)
+            }
         }
         is Json.Arr -> for (child in node.items) collectVideos(child, videos)
         else -> return

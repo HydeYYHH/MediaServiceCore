@@ -21,7 +21,9 @@ data class PlaybackLoad(
     val playback: Playback,
     val answer: PlayerAnswer? = null,
     val source: PlayerSource? = null,
-    val error: RequestError? = null
+    val error: RequestError? = null,
+    /** Client that minted the merged muxed floor, when the primary answer had none. */
+    val floorClient: PlayerClient? = null
 )
 
 private val emptyPlayback = Playback(null, null, null)

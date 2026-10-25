@@ -43,12 +43,23 @@ private fun contentItem(type: String, item: Json.Obj): MediaItem? {
         else -> expected
     }
     val metadata = item.path("metadata", "lockupMetadataViewModel") ?: item.path("metadata", "tileMetadataRenderer")
+    val carousel = item.path("onFocusCommand", "commandExecutorCommand")?.arr("commands").orEmpty()
+        .mapNotNull { (it as? Json.Obj)?.path("updateCarouselHeaderCommand", "spotlight", "entityMetadataRenderer") }
+        .firstOrNull()
+    val bylines = carousel?.arr("bylines").orEmpty().map { line ->
+        (line as? Json.Obj)?.obj("lineRenderer")?.arr("items").orEmpty()
+            .mapNotNull { (it as? Json.Obj)?.obj("lineItemRenderer") }
+    }
+    val carouselAuthor = bylines.firstOrNull()?.firstNotNullOfOrNull { it.display("text") }
+    val carouselStats = bylines.drop(1).flatten()
     val tileLines = metadata?.arr("lines").orEmpty().map { line ->
         (line as? Json.Obj)?.obj("lineRenderer")?.objects("lineItemRenderer").orEmpty()
             .mapNotNull { it.display("text") }.filter { it.isNotBlank() && it != "•" }
     }
     val rows = (metadata?.path("metadata", "contentMetadataViewModel")?.fields?.get("metadataRows") as? Json.Arr)?.items.orEmpty()
-    val rowParts = rows.map { row ->
+    // Entity-based lockups publish the same metadataRows under entityMetadataRenderer.
+    val entityRows = ((item.fields["entityMetadataRenderer"] as? Json.Obj)?.fields?.get("metadataRows") as? Json.Arr)?.items.orEmpty()
+    val rowParts = (rows + entityRows).map { row ->
         ((row as? Json.Obj)?.fields?.get("metadataParts") as? Json.Arr)?.items.orEmpty().mapNotNull { it as? Json.Obj }
     }
     val hasAuthor = metadata?.objects("decoratedAvatarViewModel")?.isNotEmpty() == true ||
@@ -70,9 +81,9 @@ private fun contentItem(type: String, item: Json.Obj): MediaItem? {
     val progress = item.objects("thumbnailOverlayResumePlaybackRenderer").firstOrNull()?.int("percentDurationWatched")
         ?: item.objects("thumbnailOverlayProgressBarViewModel").firstOrNull()?.int("startPercent")
     return MediaItem(kind, id, item.display("title") ?: item.display("headline") ?: metadata?.display("title")
-        ?: item.obj("overlayMetadata")?.display("primaryText"),
+        ?: item.obj("overlayMetadata")?.display("primaryText") ?: carousel?.display("title"),
         item.display("ownerText") ?: item.display("shortBylineText") ?: item.display("longBylineText")
-            ?: item.obj("overlayMetadata")?.display("secondaryText") ?: author ?: tileLines.firstOrNull()?.firstOrNull(),
+            ?: item.obj("overlayMetadata")?.display("secondaryText") ?: author ?: tileLines.firstOrNull()?.firstOrNull() ?: carouselAuthor,
         item.thumbnail("thumbnail") ?: item.path("header", "tileHeaderRenderer")?.thumbnail("thumbnail") ?: image?.thumbnail("image"),
         item.display("lengthText") ?: badge?.text("text")
             ?: item.objects("thumbnailOverlayTimeStatusRenderer").firstOrNull()?.display("text"),
@@ -83,9 +94,12 @@ private fun contentItem(type: String, item: Json.Obj): MediaItem? {
         watch?.text("playerParams"),
         item.thumbnail("channelThumbnail")
             ?: item.objects("channelThumbnailWithLinkRenderer").firstOrNull()?.thumbnail("thumbnail")
-            ?: item.objects("decoratedAvatarViewModel").firstOrNull()?.path("avatar", "avatarViewModel")?.thumbnail("image"),
-        item.display("viewCountText") ?: item.display("shortViewCountText") ?: views ?: tileLines.drop(1).flatten().firstOrNull { it.contains("view", true) },
-        item.display("publishedTimeText") ?: published ?: tileLines.drop(1).flatten().firstOrNull { it.contains("ago", true) || it.contains("Streamed", true) },
+            ?: item.objects("decoratedAvatarViewModel").firstOrNull()?.path("avatar", "avatarViewModel")?.thumbnail("image")
+            ?: bylines.firstOrNull()?.firstNotNullOfOrNull { it.thumbnail("thumbnail") },
+        item.display("viewCountText") ?: item.display("shortViewCountText") ?: views ?: tileLines.drop(1).flatten().firstOrNull { it.contains("view", true) }
+            ?: carouselStats.firstNotNullOfOrNull { it.display("text")?.takeIf { text -> text.contains("view", true) } },
+        item.display("publishedTimeText") ?: published ?: tileLines.drop(1).flatten().firstOrNull { it.contains("ago", true) || it.contains("Streamed", true) }
+            ?: carouselStats.firstNotNullOfOrNull { it.display("text")?.takeIf { text -> text.contains("ago", true) || text.contains("Streamed", true) } },
         item.display("videoCountText") ?: item.display("videoCount")
             ?: item.objects("thumbnailOverlayBottomPanelRenderer").firstOrNull()?.display("text")
             ?: badge?.text("text")?.takeIf { kind == "playlist" })
@@ -101,7 +115,12 @@ internal fun pageGroups(root: Json): List<MediaGroup> {
                     val nested = names.any { value.objects(it).isNotEmpty() }
                     if (nested) visit(value) else {
                         val items = contentItems(value)
-                        if (items.isNotEmpty()) result.add(MediaGroup(value.display("title"), items, pageKey(value), pageActions(value)))
+                        // TV shelves carry their title under headerRenderer.shelfHeaderRenderer.
+                        val shelfTitle = value.display("title")
+                            ?: value.path("headerRenderer", "shelfHeaderRenderer")?.let { shelf ->
+                                shelf.display("title") ?: shelf.path("avatarLockup", "avatarLockupRenderer")?.display("title")
+                            }
+                        if (items.isNotEmpty()) result.add(MediaGroup(shelfTitle, items, pageKey(value), pageActions(value)))
                     }
                 } else if (name !in contentRenderers && name !in setOf("menu", "header")) visit(value)
             }

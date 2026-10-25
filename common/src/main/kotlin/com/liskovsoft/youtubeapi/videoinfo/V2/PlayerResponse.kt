@@ -90,7 +90,11 @@ private fun Json.Obj.formats(name: String): List<PlayerFormat> {
             playerRange(format.obj("initRange")),
             playerRange(format.obj("indexRange")),
             formatCodecs(format.text("mimeType")),
-            videoRange(format)
+            videoRange(format),
+            format.long("approxDurationMs"),
+            format.integer("audioSampleRate"),
+            format.obj("audioChannels")?.arr("channels")?.firstOrNull()?.let { (it as? Json.Obj)?.integer("channelCount") ?: (it as? Json.Num)?.text?.toIntOrNull() },
+            format.text("qualityLabel")?.takeIf { it.isNotEmpty() }
         ))
     }
     return formats

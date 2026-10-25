@@ -15,6 +15,19 @@ class PlaybackSession @JvmOverloads constructor(private val http: HttpClient = J
     private val scopedSolver = solver?.let { CachedPlayerSolver(it, MemoryPlaybackCache(now = now)) }
     private val scopedTokens = tokens?.let { CachedPlayerTokens(it, now = now) }
     fun invalidate() = results.clear()
+
+/**
+ * Trusted roots cover the whole answer catalog, not only the selected playback:
+ * quality switching and downloads consume sibling formats of one response, and
+ * derived (range/rn) child requests extend these roots via [registerRequest].
+ */
+private fun sourceUrls(answer: PlayerAnswer?, playback: Playback): Set<String> {
+    if (answer == null) return listOfNotNull(playback.hlsUrl, playback.dashUrl, playback.sabrUrl, playback.videoUrl, playback.audioUrl).toSet()
+    return (answer.muxedUrls.asSequence() + answer.adaptiveUrls.asSequence() +
+        answer.muxedFormats.asSequence().mapNotNull { it.url } + answer.adaptiveFormats.asSequence().mapNotNull { it.url } +
+        sequenceOf(playback.hlsUrl, playback.dashUrl, playback.sabrUrl, playback.videoUrl, playback.audioUrl))
+        .filterNotNull().filter { it.isNotEmpty() }.toSet()
+}
     @Synchronized internal fun source(load: PlaybackLoad): PlayerSource? {
         val supplied = load.source ?: return null
         val known = sources[supplied.sequence] ?: return null
@@ -61,11 +74,14 @@ class PlaybackSession @JvmOverloads constructor(private val http: HttpClient = J
             if (!result.ok) PlaybackLoad(PlaybackForm.VOD, null, Playback(null, null, null), error = result.error)
             else {
                 val player = result.value!!
-                val playback = selectPlayback(player.answer, preference)
-                val urls = listOfNotNull(playback.hlsUrl, playback.dashUrl, playback.sabrUrl, playback.videoUrl, playback.audioUrl).toSet()
+                val floor = mergeFloor(player, videoId, context, preference, activeScript)
+                val answer = floor?.first
+                val playback = selectPlayback(answer, preference)
+                val urls = sourceUrls(answer, playback)
                 if (urls.isEmpty()) PlaybackLoad(player.form, player.client, playback, error = RequestError(RequestFailure.UNSUPPORTED, "no_matching_format"))
-                else PlaybackLoad(player.form, player.client, playback, player.answer,
-                    remember(PlayerSource(videoId, player.client!!, context, urls, sequence.incrementAndGet(), preference, sessionId)))
+                else PlaybackLoad(player.form, player.client, playback, answer,
+                    remember(PlayerSource(videoId, player.client!!, context, urls, sequence.incrementAndGet(), preference, sessionId)),
+                    floorClient = floor?.second)
             }
         }} catch (_: InterruptedException) {
             Thread.currentThread().interrupt()
@@ -76,5 +92,39 @@ class PlaybackSession @JvmOverloads constructor(private val http: HttpClient = J
             results.put(key, loaded, minOf(45000L, lifetime), generation)
         }
         return if (loaded.error != null) ReadResult(error = loaded.error) else ReadResult(loaded)
+    }
+
+    /**
+     * The direct-URL queue leaders answer VOD without progressive formats; the ANDROID
+     * reel_item_watch response carries a window-exempt muxed floor that VOD answers merge
+     * so playback and downloads share one catalog. A failed floor fetch never demotes the
+     * primary answer.
+     */
+    private fun mergeFloor(player: PlayerLoad, videoId: String, context: RequestContext,
+        preference: PlaybackPreference, activeScript: PlayerScript?): Pair<PlayerAnswer?, PlayerClient?>? {
+        val answer = player.answer ?: return null
+        if (player.form != PlaybackForm.VOD || answer.live) return answer to null
+        if (answer.muxedFormats.any { !it.url.isNullOrBlank() }) return answer to null
+        val query = reelFloorQuery(videoId, context.visitor, nonce(16), nonce(12))
+        val response = try { requestObject(query, http) } catch (failure: InterruptedException) {
+            throw failure
+        } catch (_: Exception) { null } ?: return answer to null
+        if (!response.ok) return answer to null
+        val reelRoot = jsonObject(response.value?.encode() ?: return answer to null)?.obj("playerResponse")
+            ?: return answer to null
+        var floor = try { playerAnswer(reelRoot.encode()) } catch (_: Exception) { return answer to null }
+        if (floor.details?.videoId != videoId) return answer to null
+        floor = openBoundFormats(floor, activeScript, scopedSolver)
+        val receivedAt = now()
+        val deadlines = listOfNotNull(floor.expiresInSeconds?.let { receivedAt + it.coerceIn(0, 31536000) * 1000 })
+        floor = floor.copy(expiresAtMs = deadlines.minOrNull())
+        if (floor.muxedFormats.none { !it.url.isNullOrBlank() }) return answer to null
+        return answer.copy(
+            muxedFormats = floor.muxedFormats,
+            muxedUrls = floor.muxedUrls,
+            hasMuxed = answer.hasMuxed || floor.hasMuxed,
+            hasDirectUrl = answer.hasDirectUrl || floor.hasDirectUrl,
+            expiresAtMs = listOfNotNull(answer.expiresAtMs, floor.expiresAtMs).minOrNull(),
+        ) to PlayerClient.ANDROID_VR
     }
 }
