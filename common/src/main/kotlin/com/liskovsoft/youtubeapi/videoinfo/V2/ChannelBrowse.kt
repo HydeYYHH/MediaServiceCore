@@ -6,6 +6,8 @@ fun channelPage(body: String, channelId: String? = null): ChannelPage {
     val root = jsonObject(body)
     val metadata = root?.objects("channelMetadataRenderer")?.firstOrNull()
     val header = root?.objects("c4TabbedHeaderRenderer")?.firstOrNull()
+    // The live channel header wraps the view model: pageHeaderRenderer.content.pageHeaderViewModel.
+    val wrapped = root?.objects("pageHeaderRenderer")?.firstOrNull()
     val modern = root?.objects("pageHeaderViewModel")?.firstOrNull()
     val labels = modern?.path("metadata", "contentMetadataViewModel")?.let { content ->
         content.objects("text").mapNotNull { it.text("content") }
@@ -17,7 +19,8 @@ fun channelPage(body: String, channelId: String? = null): ChannelPage {
             toggle.objects("subscribeEndpoint").isNotEmpty() || toggle.objects("unsubscribeEndpoint").isNotEmpty()
         }?.bool("isToggled")
     return ChannelPage(metadata?.text("externalId") ?: header?.text("channelId") ?: channelId,
-        metadata?.text("title") ?: header?.text("title") ?: modern?.objects("dynamicTextViewModel")?.firstOrNull()?.display("text"),
+        metadata?.text("title") ?: header?.text("title") ?: modern?.objects("dynamicTextViewModel")?.firstOrNull()?.display("text")
+            ?: wrapped?.text("pageTitle"),
         metadata?.text("description") ?: modern?.objects("descriptionPreviewViewModel")?.firstOrNull()?.display("description"),
         metadata?.thumbnail("avatar") ?: header?.thumbnail("avatar") ?: modern?.objects("avatarViewModel")?.firstOrNull()?.thumbnail("image"),
         header?.display("subscriberCountText") ?: labels.firstOrNull { it.contains("subscriber", true) }, browsePage(body),

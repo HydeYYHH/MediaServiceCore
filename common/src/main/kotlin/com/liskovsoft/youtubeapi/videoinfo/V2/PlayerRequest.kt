@@ -7,6 +7,36 @@ private const val WEB_AGENT =
 private const val SAFARI_AGENT =
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.5 Safari/605.1.15,gzip(gfe)"
 private val VIDEO_ID = Regex("^[A-Za-z0-9_-]+$")
+private const val REEL_URL = "https://www.youtube.com/youtubei/v1/reel/reel_item_watch?prettyPrint=false"
+private const val REEL_AGENT = "com.google.android.youtube/21.03.36 (Linux; U; Android 16; US) gzip"
+private const val NONCE_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
+private val nonceRandom = java.security.SecureRandom()
+
+internal fun nonce(length: Int): String {
+    val builder = StringBuilder(length)
+    repeat(length) { builder.append(NONCE_ALPHABET[nonceRandom.nextInt(NONCE_ALPHABET.length)]) }
+    return builder.toString()
+}
+
+/**
+ * ANDROID reel_item_watch posture. The reel response's muxed formats stay readable
+ * without a poToken and outside the ~64 s window that gates pot-less mobile URLs,
+ * which is why they serve as the VOD floor when the queue leaders answer adaptive-only.
+ */
+fun reelFloorQuery(videoId: String, visitor: String?, cpn: String, t: String): PlayerQuery {
+    if (!VIDEO_ID.matches(videoId)) return PlayerQuery("", emptyMap(), "")
+    val headers = linkedMapOf(
+        "Content-Type" to "application/json",
+        "User-Agent" to REEL_AGENT,
+        "X-Youtube-Client-Name" to "3",
+        "X-Youtube-Client-Version" to "21.03.36"
+    )
+    if (!visitor.isNullOrEmpty()) headers["X-Goog-Visitor-Id"] = visitor
+    val visitorField = if (visitor.isNullOrEmpty()) "" else ""","visitorData":"$visitor""""
+    val body = """{"context":{"client":{"clientName":"ANDROID","clientVersion":"21.03.36","androidSdkVersion":36,"hl":"en","gl":"US"$visitorField}},""" +
+        """"playerRequest":{"videoId":"$videoId","cpn":"$cpn","contentCheckOk":true,"racyCheckOk":true},"disablePlayerResponse":false}"""
+    return PlayerQuery("$REEL_URL&t=$t&id=$videoId&\$fields=playerResponse", headers, body)
+}
 
 data class PlayerQuery(val url: String, val headers: Map<String, String>, val body: String)
 

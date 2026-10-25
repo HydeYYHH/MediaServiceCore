@@ -67,7 +67,11 @@ data class PlayerFormat @JvmOverloads constructor(
     val initRange: PlayerRange? = null,
     val indexRange: PlayerRange? = null,
     val codecs: List<String> = emptyList(),
-    val dynamicRange: VideoRange = VideoRange.UNKNOWN
+    val dynamicRange: VideoRange = VideoRange.UNKNOWN,
+    val approxDurationMs: Long? = null,
+    val sampleRate: Int? = null,
+    val audioChannels: Int? = null,
+    val qualityLabel: String? = null
 )
 
 data class AttemptResult(val form: PlaybackForm, val client: PlayerClient?)

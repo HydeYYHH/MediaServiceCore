@@ -12,10 +12,13 @@ class PlayerClientQueuesTest {
     @Test
     fun defaultsMatchTheFourQueues() {
         assertEquals(
-            listOf(PlayerClient.VISIONOS, PlayerClient.WEB, PlayerClient.WEB_EMBED, PlayerClient.WEB_SAFARI, PlayerClient.TV),
+            listOf(PlayerClient.VISIONOS, PlayerClient.WEB, PlayerClient.WEB_EMBED, PlayerClient.WEB_SAFARI, PlayerClient.TV, PlayerClient.ANDROID_VR),
             queues.order(vod)
         )
-        assertEquals(queues.order(vod), queues.order(signedInVod))
+        assertEquals(
+            listOf(PlayerClient.WEB_SAFARI, PlayerClient.VISIONOS, PlayerClient.WEB, PlayerClient.WEB_EMBED, PlayerClient.TV, PlayerClient.ANDROID_VR),
+            queues.order(signedInVod)
+        )
         assertEquals(
             listOf(PlayerClient.WEB, PlayerClient.WEB_SAFARI, PlayerClient.VISIONOS, PlayerClient.WEB_EMBED, PlayerClient.ANDROID_VR),
             queues.order(live)
@@ -62,7 +65,7 @@ class PlayerClientQueuesTest {
     fun demoteMovesTheClientToTheEnd() {
         queues.demote(vod, PlayerClient.VISIONOS)
         assertEquals(
-            listOf(PlayerClient.WEB, PlayerClient.WEB_EMBED, PlayerClient.WEB_SAFARI, PlayerClient.TV, PlayerClient.VISIONOS),
+            listOf(PlayerClient.WEB, PlayerClient.WEB_EMBED, PlayerClient.WEB_SAFARI, PlayerClient.TV, PlayerClient.ANDROID_VR, PlayerClient.VISIONOS),
             queues.order(vod)
         )
     }

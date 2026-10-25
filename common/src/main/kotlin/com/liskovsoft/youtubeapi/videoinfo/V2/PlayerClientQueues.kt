@@ -45,13 +45,27 @@ class PlayerClientQueues {
 
     companion object {
         fun defaultOrder(key: ClientQueueKey): List<PlayerClient> = when (key.form) {
-            PlaybackForm.VOD -> listOf(
-                PlayerClient.VISIONOS,
-                PlayerClient.WEB,
-                PlayerClient.WEB_EMBED,
-                PlayerClient.WEB_SAFARI,
-                PlayerClient.TV
-            )
+            // Verified playback routes: the cookieless direct-URL client leads anonymous
+            // VOD; a signed-in session starts from the cookie-bearing WEB_SAFARI before
+            // falling back. ANDROID_VR stays the terminal emergency pool.
+            PlaybackForm.VOD -> when (key.signIn) {
+                SignIn.SIGNED_IN -> listOf(
+                    PlayerClient.WEB_SAFARI,
+                    PlayerClient.VISIONOS,
+                    PlayerClient.WEB,
+                    PlayerClient.WEB_EMBED,
+                    PlayerClient.TV,
+                    PlayerClient.ANDROID_VR
+                )
+                else -> listOf(
+                    PlayerClient.VISIONOS,
+                    PlayerClient.WEB,
+                    PlayerClient.WEB_EMBED,
+                    PlayerClient.WEB_SAFARI,
+                    PlayerClient.TV,
+                    PlayerClient.ANDROID_VR
+                )
+            }
             PlaybackForm.LIVE -> when (key.signIn) {
                 SignIn.SIGNED_OUT -> listOf(
                     PlayerClient.WEB,

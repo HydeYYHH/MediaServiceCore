@@ -17,7 +17,7 @@ fun loadPlayer(videoId: String, context: RequestContext, http: HttpClient = JvmH
     if (!videoIdAccepted(videoId)) return ReadResult(error = RequestError(RequestFailure.INVALID, "invalid_video_id"))
     var answer: PlayerAnswer? = null
     var lastError: RequestError? = null
-    val signIn = if (context.accessToken == null) SignIn.SIGNED_OUT else SignIn.SIGNED_IN
+    val signIn = if (context.signedIn) SignIn.SIGNED_IN else SignIn.SIGNED_OUT
     var tokenDeadline: Long? = null
     fun token(client: PlayerClient, purpose: TokenPurpose, identity: RequestContext): String? {
         val value = tokens?.token(PlayerTokenRequest(client, videoId, identity, purpose))
@@ -32,7 +32,12 @@ fun loadPlayer(videoId: String, context: RequestContext, http: HttpClient = JvmH
         }
         if (client in excluded) return@run PlayerAnswer(true, null, null, false, false, false, false)
         tokenDeadline = null
-        val identity = if (client == PlayerClient.TV) context else context.anonymous()
+        val identity = when (client) {
+            PlayerClient.TV -> context
+            PlayerClient.WEB, PlayerClient.WEB_SAFARI, PlayerClient.WEB_EMBED ->
+                context.copy(accountId = null, accessToken = null, onBehalfOfUser = null)
+            else -> context.anonymous()
+        }
         var query = contextualQuery(playerQuery(client, videoId, identity.visitor, script?.let { signatureTimestamp(it.source) }), identity)
         try {
             val pot = token(client, TokenPurpose.PLAYER, identity)
