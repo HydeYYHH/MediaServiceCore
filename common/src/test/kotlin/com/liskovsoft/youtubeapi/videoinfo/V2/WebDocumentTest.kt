@@ -39,8 +39,14 @@ class WebDocumentTest {
         val tracking = PlayerTracking("https://www.youtube.com/api/stats/playback", "https://www.youtube.com/api/stats/watchtime")
         assertFalse(history.update("video", 1, 10, tracking, RequestContext()).ok)
         assertTrue(history.update("video", 1, 10, tracking, RequestContext(visitor = "visitor")).ok)
-        assertEquals("visitor", calls.last().headers["X-Goog-Visitor-Id"])
-        assertFalse(calls.last().headers.containsKey("Authorization"))
+        assertTrue(history.update("video", 5, 10, tracking, RequestContext(visitor = "visitor")).ok)
+        // The playback record and the chained watch-time report both carry the
+        // visitor, never an Authorization header.
+        assertEquals(2, calls.size)
+        calls.forEach {
+            assertEquals("visitor", it.headers["X-Goog-Visitor-Id"])
+            assertFalse(it.headers.containsKey("Authorization"))
+        }
         assertFalse(history.update("other", 1, 10, tracking.copy(playbackUrl = "https://other.com/api/stats/playback"), RequestContext(visitor = "visitor")).ok)
         assertEquals(2, calls.size)
     }

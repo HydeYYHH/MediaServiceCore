@@ -74,7 +74,8 @@ private fun sourceUrls(answer: PlayerAnswer?, playback: Playback): Set<String> {
             if (!result.ok) PlaybackLoad(PlaybackForm.VOD, null, Playback(null, null, null), error = result.error)
             else {
                 val player = result.value!!
-                val floor = mergeFloor(player, videoId, context, preference, activeScript)
+                val floor = if (PlayerClient.ANDROID_VR in excluded) player.answer to null
+                    else mergeFloor(player, videoId, context, preference, activeScript)
                 val answer = floor?.first
                 val playback = selectPlayback(answer, preference)
                 val urls = sourceUrls(answer, playback)

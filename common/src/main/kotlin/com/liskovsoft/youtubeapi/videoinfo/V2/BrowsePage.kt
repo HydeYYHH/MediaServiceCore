@@ -8,8 +8,18 @@ fun browsePage(body: String): BrowsePage {
     val tabs = root.objects("tabRenderer").map {
         val endpoint = (it.obj("endpoint") ?: it.obj("navigationEndpoint"))?.obj("browseEndpoint")
         BrowseTab(it.text("title") ?: it.display("title"), endpoint?.text("browseId"), endpoint?.text("params"), it.bool("selected") == true)
+    }.ifEmpty {
+        root.objects("tileRenderer").mapNotNull { tile ->
+            if (tile.text("style") != "TILE_STYLE_YTLR_WORMHOLE_RECTANGULAR") return@mapNotNull null
+            val endpoint = tile.path("onSelectCommand", "browseEndpoint") ?: return@mapNotNull null
+            val title = tile.objects("tileMetadataRenderer").firstNotNullOfOrNull { it.display("title") }
+            BrowseTab(title, endpoint.text("browseId"), endpoint.text("params"), false)
+        }.distinctBy { it.browseId to it.params }
     }
-    val selected = root.objects("tabRenderer").firstOrNull { it.bool("selected") == true }?.obj("content") ?: root
+    // Continuation responses wrap their content in continuationContents.<kind>Continuation.
+    val continued = root.obj("continuationContents")?.fields?.values?.singleOrNull() as? Json.Obj
+    val selected = continued
+        ?: root.objects("tabRenderer").firstOrNull { it.bool("selected") == true }?.obj("content") ?: root
     val messages = pageMessages(selected)
     return BrowsePage(contentItems(selected), pageGroups(selected), tabs, pageKey(selected), messages, pageActions(selected),
         root.obj("responseContext")?.text("visitorData"))

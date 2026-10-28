@@ -73,8 +73,11 @@ fun loadPlayer(videoId: String, context: RequestContext, http: HttpClient = JvmH
             }
             answer = fetched
             if (!selectPlayback(fetched, preference).hasSource()) {
-                lastError = RequestError(RequestFailure.UNSUPPORTED, "no_matching_format")
-                return@run PlayerAnswer(false, null, null, false, false, false, fetched.live)
+                val status = fetched.status?.takeIf { it != "OK" && it.matches(Regex("[A-Z_]{1,48}")) }
+                lastError = RequestError(RequestFailure.UNSUPPORTED,
+                    status?.let { "playability_${it.toLowerCase(java.util.Locale.ROOT)}" } ?: "no_matching_format")
+                return@run fetched.copy(hasDirectUrl = false, hasHls = false, hasMuxed = false,
+                    hlsUrl = null, dashUrl = null, sabrUrl = null)
             }
             lastError = RequestError(RequestFailure.UNSUPPORTED, fetched.status ?: "no_playable_source")
             fetched
