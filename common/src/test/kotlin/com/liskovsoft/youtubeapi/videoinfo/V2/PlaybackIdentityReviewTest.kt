@@ -4,6 +4,27 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class PlaybackIdentityReviewTest {
+    @Test fun refusedSupplementalClientIsNotMergedBackIntoTheCatalog() {
+        var floorRequests = 0
+        val http = object : HttpClient {
+            override fun execute(request: HttpRequest): HttpReply = if (request.url.contains("reel_item_watch")) {
+                floorRequests++
+                HttpReply(200, """{"playerResponse":{"videoDetails":{"videoId":"video"},"streamingData":{"formats":[{"url":"https://floor","mimeType":"video/mp4","itag":18}]}}}""")
+            } else HttpReply(200, """{"videoDetails":{"videoId":"video"},"streamingData":{"adaptiveFormats":[{"url":"https://primary","mimeType":"video/mp4","itag":137},{"url":"https://audio","mimeType":"audio/mp4","itag":140}]}}""")
+        }
+        val session = PlaybackSession(http)
+        val excluded = session.load("video", excluded = setOf(PlayerClient.ANDROID_VR))
+        assertTrue(excluded.ok)
+        assertTrue(excluded.value!!.answer!!.muxedFormats.isEmpty())
+        assertNull(excluded.value!!.floorClient)
+        assertEquals(0, floorRequests)
+        val allowed = session.load("video")
+        assertTrue(allowed.ok)
+        assertEquals(1, allowed.value!!.answer!!.muxedFormats.size)
+        assertEquals(PlayerClient.ANDROID_VR, allowed.value!!.floorClient)
+        assertEquals(1, floorRequests)
+    }
+
     @Test fun cookieIdentityReachesTheWebClientWithoutBearerCredentials() {
         var first: HttpRequest? = null
         val http = object : HttpClient {

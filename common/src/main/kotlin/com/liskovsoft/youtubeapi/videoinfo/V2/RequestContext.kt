@@ -16,6 +16,13 @@ data class RequestContext(
     }
     override fun toString() = "RequestContext(language=$language, region=$region, generation=$generation)"
 }
+
+/** Ledger identity: the account (or salted anonymous visitor) plus the session generation.
+ *  Unlike [scope], a rotating access token does not change it, so a token refresh
+ *  mid-playback keeps the position ledger and the playback session alive. */
+internal fun RequestContext.ledgerScope(): String =
+    listOf(accountId ?: visitor?.let(::textDigest), generation.toString(), onBehalfOfUser)
+        .joinToString(Char.MIN_VALUE.toString()) { if (it == null) "-" else it.length.toString() + ":" + it }
 internal fun textDigest(text: String): String = java.security.MessageDigest.getInstance("SHA-256")
     .digest(text.toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it.toInt() and 255) }
 fun PlayerQuery.request() = HttpRequest("POST", url, headers, body)

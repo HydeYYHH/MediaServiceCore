@@ -2,6 +2,20 @@ package com.liskovsoft.youtubeapi.videoinfo.V2
 import org.junit.Assert.*
 import org.junit.Test
 class BrowsePageTest {
+    @Test fun channelNavigationTilesKeepTheirOwnBrowseCommands() {
+        val page = browsePage("""{"items":[{"tileRenderer":{"style":"TILE_STYLE_YTLR_WORMHOLE_RECTANGULAR","contentId":"UCowner","header":{"tileHeaderRenderer":{"thumbnailOverlays":[{"tileMetadataRenderer":{"title":{"simpleText":"Shorts"}}}]}},"onSelectCommand":{"browseEndpoint":{"browseId":"UCowner","params":"8gYHEgVyAIABAg%3D%3D"}}}},{"tileRenderer":{"style":"TILE_STYLE_YTLR_SHORTS","contentId":"video123456","onSelectCommand":{"reelWatchEndpoint":{"videoId":"video123456"}}}}]}""")
+        assertEquals(listOf(BrowseTab("Shorts", "UCowner", "8gYHEgVyAIABAg%3D%3D", false)), page.tabs)
+    }
+
+    @Test fun shortTileMetadataComesFromItsThumbnailOverlay() {
+        val page = browsePage("""{"items":[{"tileRenderer":{"style":"TILE_STYLE_YTLR_SHORTS","header":{"tileHeaderRenderer":{"thumbnail":{"thumbnails":[{"url":"https://i.ytimg.com/vi/video123456/frame0.jpg"}]},"thumbnailOverlays":[{"tileMetadataRenderer":{"title":{"simpleText":"Short title"},"lines":[{"lineRenderer":{"items":[{"lineItemRenderer":{"text":{"simpleText":"3 days ago"}}}]}}]}}]}},"onSelectCommand":{"reelWatchEndpoint":{"videoId":"video123456"}}}}]}""")
+        val item = page.items.single()
+        assertEquals("short", item.kind)
+        assertEquals("video123456", item.id)
+        assertEquals("Short title", item.title)
+        assertEquals("3 days ago", item.published)
+        assertEquals("https://i.ytimg.com/vi/video123456/frame0.jpg", item.thumbnail)
+    }
     @Test fun keepsTheServersEmptyFeedMessage() {
         val page=browsePage("""{"contents":{"richGridRenderer":{"header":{"feedNudgeRenderer":{"title":{"runs":[{"text":"Try searching to get started"}]}}}}}}""")
         assertTrue(page.items.isEmpty())

@@ -43,6 +43,7 @@ private fun contentItem(type: String, item: Json.Obj): MediaItem? {
         else -> expected
     }
     val metadata = item.path("metadata", "lockupMetadataViewModel") ?: item.path("metadata", "tileMetadataRenderer")
+        ?: item.path("header", "tileHeaderRenderer")?.objects("tileMetadataRenderer")?.firstOrNull()
     val carousel = item.path("onFocusCommand", "commandExecutorCommand")?.arr("commands").orEmpty()
         .mapNotNull { (it as? Json.Obj)?.path("updateCarouselHeaderCommand", "spotlight", "entityMetadataRenderer") }
         .firstOrNull()
@@ -83,7 +84,8 @@ private fun contentItem(type: String, item: Json.Obj): MediaItem? {
     return MediaItem(kind, id, item.display("title") ?: item.display("headline") ?: metadata?.display("title")
         ?: item.obj("overlayMetadata")?.display("primaryText") ?: carousel?.display("title"),
         item.display("ownerText") ?: item.display("shortBylineText") ?: item.display("longBylineText")
-            ?: item.obj("overlayMetadata")?.display("secondaryText") ?: author ?: tileLines.firstOrNull()?.firstOrNull() ?: carouselAuthor,
+            ?: item.obj("overlayMetadata")?.display("secondaryText") ?: author
+            ?: tileLines.firstOrNull()?.firstOrNull()?.takeUnless { it.contains("ago", true) || it.contains("view", true) } ?: carouselAuthor,
         item.thumbnail("thumbnail") ?: item.path("header", "tileHeaderRenderer")?.thumbnail("thumbnail") ?: image?.thumbnail("image"),
         item.display("lengthText") ?: badge?.text("text")
             ?: item.objects("thumbnailOverlayTimeStatusRenderer").firstOrNull()?.display("text"),
@@ -96,9 +98,9 @@ private fun contentItem(type: String, item: Json.Obj): MediaItem? {
             ?: item.objects("channelThumbnailWithLinkRenderer").firstOrNull()?.thumbnail("thumbnail")
             ?: item.objects("decoratedAvatarViewModel").firstOrNull()?.path("avatar", "avatarViewModel")?.thumbnail("image")
             ?: bylines.firstOrNull()?.firstNotNullOfOrNull { it.thumbnail("thumbnail") },
-        item.display("viewCountText") ?: item.display("shortViewCountText") ?: views ?: tileLines.drop(1).flatten().firstOrNull { it.contains("view", true) }
+        item.display("viewCountText") ?: item.display("shortViewCountText") ?: views ?: tileLines.flatten().firstOrNull { it.contains("view", true) }
             ?: carouselStats.firstNotNullOfOrNull { it.display("text")?.takeIf { text -> text.contains("view", true) } },
-        item.display("publishedTimeText") ?: published ?: tileLines.drop(1).flatten().firstOrNull { it.contains("ago", true) || it.contains("Streamed", true) }
+        item.display("publishedTimeText") ?: published ?: tileLines.flatten().firstOrNull { it.contains("ago", true) || it.contains("Streamed", true) }
             ?: carouselStats.firstNotNullOfOrNull { it.display("text")?.takeIf { text -> text.contains("ago", true) || text.contains("Streamed", true) } },
         item.display("videoCountText") ?: item.display("videoCount")
             ?: item.objects("thumbnailOverlayBottomPanelRenderer").firstOrNull()?.display("text")
