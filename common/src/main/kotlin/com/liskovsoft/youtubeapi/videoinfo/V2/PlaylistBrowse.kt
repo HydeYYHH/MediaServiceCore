@@ -26,23 +26,28 @@ fun playlistBrowseQuery(playlistId: String?, continuation: String?, visitor: Str
         return webQuery(BROWSE_URL, """"continuation":"${escapeJson(continuation)}"""", visitor)
     }
     if (playlistId == null || !videoIdAccepted(playlistId)) return PlayerQuery("", emptyMap(), "")
-    return webQuery(BROWSE_URL, """"browseId":"VL${escapeJson(playlistId)}"""", visitor)
+    val browseId = if (playlistId.startsWith("VL")) playlistId else "VL$playlistId"
+    return webQuery(BROWSE_URL, """"browseId":"${escapeJson(browseId)}"""", visitor)
 }
 
 fun playlistPage(body: String): PlaylistPage {
     val root = jsonObject(body) ?: return emptyPage
     val header = findHeader(root)
     val videos = ArrayList<PlaylistVideo>()
-    val primary = root.path("contents", "twoColumnBrowseResultsRenderer")
+    val columns = root.path("contents", "tvBrowseRenderer", "content", "tvSurfaceContentRenderer", "content", "twoColumnRenderer")
+    val entity = columns?.path("leftColumn", "entityMetadataRenderer")
+    val primary = columns?.path("rightColumn", "playlistVideoListRenderer")
+        ?: root.path("contents", "twoColumnBrowseResultsRenderer")
         ?: root.path("contents", "singleColumnBrowseResultsRenderer")
         ?: root.obj("continuationContents") ?: root
     collectVideos(primary, videos)
     val modern = root.path("header", "pageHeaderRenderer")
     return PlaylistPage(
         displayText(header?.obj("title"))
-            ?: root.path("metadata", "playlistMetadataRenderer")?.text("title") ?: modern?.text("pageTitle"),
+            ?: root.path("metadata", "playlistMetadataRenderer")?.text("title") ?: modern?.text("pageTitle") ?: entity?.display("title"),
         displayText(header?.obj("ownerText"))
-            ?: modern?.objects("avatarStackViewModel")?.firstOrNull()?.display("text"),
+            ?: modern?.objects("avatarStackViewModel")?.firstOrNull()?.display("text")
+            ?: entity?.arr("bylines")?.firstOrNull()?.objects("lineItemRenderer")?.firstNotNullOfOrNull { it.display("text") },
         videos,
         listContinuation(primary) ?: appendContinuation(root) ?: pageKey(primary)
     )
@@ -71,6 +76,15 @@ private fun collectVideos(node: Json, videos: ArrayList<PlaylistVideo>) {
             val videoId = renderer?.text("videoId")?.takeIf { it.isNotEmpty() }
             if (renderer != null && videoId != null) {
                 videos.add(playlistVideo(renderer, videoId))
+                return
+            }
+            node.obj("tileRenderer")?.let { tile ->
+                val watch = tile.path("onSelectCommand", "watchEndpoint")
+                val id = watch?.text("videoId")
+                val item = contentItems(Json.Obj(mapOf("tileRenderer" to tile))).firstOrNull { it.kind == "video" }
+                if (id != null && item != null) videos.add(PlaylistVideo(id, item.title, item.author, item.duration,
+                    watch?.int("index")?.plus(1)?.toString(), item.thumbnail,
+                    watch?.text("playlistSetVideoId") ?: tile.text("setVideoId")))
                 return
             }
             node.obj("lockupViewModel")?.let { modern ->
