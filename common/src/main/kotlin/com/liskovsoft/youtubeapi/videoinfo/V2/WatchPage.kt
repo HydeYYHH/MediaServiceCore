@@ -32,27 +32,56 @@ data class WatchPage @JvmOverloads constructor(val videoId: String?, val title: 
     val viewCount: String? = null, val published: String? = null, val commentCount: String? = null)
 fun watchPage(body: String, videoId: String? = null): WatchPage {
     val root = jsonObject(body)
-    val primary = root?.objects("videoPrimaryInfoRenderer")?.firstOrNull()
-    val secondary = root?.objects("videoSecondaryInfoRenderer")?.firstOrNull()
-    val owner = secondary?.objects("videoOwnerRenderer")?.firstOrNull()
+    val singleColumn = root?.path("contents", "singleColumnWatchNextResults")
+    val metadata = singleColumn?.path("results", "results")?.let { results ->
+        results.objects("videoMetadataRenderer").firstOrNull()
+            ?: results.objects("musicWatchMetadataRenderer").firstOrNull()
+    }
+    val primary = root?.objects("videoPrimaryInfoRenderer")?.firstOrNull() ?: metadata
+    val secondary = root?.objects("videoSecondaryInfoRenderer")?.firstOrNull() ?: metadata
+    val controls = root?.path("transportControls", "transportControlsRenderer")
+    fun control(type: String) = controls?.arr("buttons")?.mapNotNull { it as? Json.Obj }
+        ?.firstOrNull { it.text("type") == "TRANSPORT_CONTROLS_BUTTON_TYPE_$type" }?.obj("button")
+    val owner = secondary?.path("owner", "videoOwnerRenderer")
+        ?: controls?.path("channelButton", "videoOwnerRenderer")
+        ?: control("CHANNEL_BUTTON")?.obj("videoOwnerRenderer")
+    val details = root?.obj("videoDetails")
     val chapters = (root?.objects("chapterRenderer").orEmpty().mapNotNull { it.long("timeRangeStartMillis")?.let { ms -> Chapter(it.display("title"), ms, it.thumbnail("thumbnail")) } } +
         root?.objects("macroMarkersListItemRenderer").orEmpty().mapNotNull {
             it.path("onTap", "watchEndpoint")?.long("startTimeSeconds")?.let { sec -> Chapter(it.display("title"), sec * 1000, it.thumbnail("thumbnail")) }
         }).filter { it.startMs >= 0 }.distinctBy { it.startMs }.sortedBy { it.startMs }
-    val recommendations = root?.path("contents", "twoColumnWatchNextResults", "secondaryResults", "secondaryResults") ?: root
+    val recommendations = if (singleColumn != null) {
+        singleColumn.path("pivot", "pivot") ?: singleColumn.path("pivot", "sectionListRenderer")
+    } else root?.path("contents", "twoColumnWatchNextResults", "secondaryResults", "secondaryResults")
+        ?: root?.obj("continuationContents") ?: root
     val liveChat = root?.objects("liveChatRenderer")?.firstOrNull()
     val queue = root?.let(::readWatchQueue)
-    return WatchPage(root?.obj("videoDetails")?.text("videoId") ?: videoId, primary?.display("title") ?: root?.obj("videoDetails")?.text("title"),
-        secondary?.display("description") ?: secondary?.obj("attributedDescription")?.text("content"), owner?.display("title"),
-        owner?.path("navigationEndpoint", "browseEndpoint")?.text("browseId"), chapters,
+    val like = controls?.path("likeButton", "toggleButtonRenderer") ?: control("LIKE_BUTTON")?.obj("toggleButtonRenderer")
+    val dislike = controls?.path("dislikeButton", "toggleButtonRenderer") ?: control("DISLIKE_BUTTON")?.obj("toggleButtonRenderer")
+    val rating = when {
+        like?.bool("isToggled") == true -> "LIKE"
+        dislike?.bool("isToggled") == true -> "DISLIKE"
+        like?.bool("isToggled") != null || dislike?.bool("isToggled") != null -> "INDIFFERENT"
+        else -> metadata?.text("likeStatus") ?: root?.objects("likeButtonRenderer")?.firstOrNull()?.text("likeStatus")
+            ?: root?.objects("likeStatusEntity")?.firstOrNull()?.text("likeStatus")
+    }
+    return WatchPage(details?.text("videoId") ?: metadata?.text("videoId") ?: videoId,
+        primary?.display("title") ?: details?.text("title"),
+        secondary?.display("description") ?: secondary?.obj("attributedDescription")?.text("content") ?: details?.text("shortDescription"),
+        owner?.display("title") ?: metadata?.display("byline") ?: details?.text("author"),
+        owner?.path("navigationEndpoint", "browseEndpoint")?.text("browseId")
+            ?: owner?.objects("browseEndpoint")?.firstNotNullOfOrNull { it.text("browseId")?.takeIf { id -> id.startsWith("UC") } }
+            ?: owner?.path("subscribeButton", "subscribeButtonRenderer")?.text("channelId") ?: details?.text("channelId"), chapters,
         recommendations?.let(::contentItems).orEmpty(), recommendations?.let(::pageKey), commentKey(body), liveChat?.let(::pageKey),
         readStoryboard(root?.objects("playerStoryboardSpecRenderer")?.firstOrNull()?.text("spec")), queue, root?.let { resumeSeconds(it, queue) },
         owner?.thumbnail("thumbnail"),
-        root?.objects("likeButtonRenderer")?.firstOrNull()?.text("likeStatus")
-            ?: root?.objects("likeStatusEntity")?.firstOrNull()?.text("likeStatus"),
-        root?.objects("subscribeButtonRenderer")?.firstOrNull()?.bool("subscribed"),
-        primary?.objects("videoViewCountRenderer")?.firstOrNull()?.let { it.display("shortViewCount") ?: it.display("viewCount") },
-        primary?.display("dateText"),
+        rating,
+        controls?.path("subscribeButton", "toggleButtonRenderer")?.bool("isToggled")
+            ?: owner?.obj("subscriptionButton")?.bool("subscribed") ?: owner?.bool("subscribed")
+            ?: root?.objects("subscribeButtonRenderer")?.firstOrNull()?.bool("subscribed"),
+        primary?.objects("videoViewCountRenderer")?.firstOrNull()?.let { it.display("shortViewCount") ?: it.display("viewCount") }
+            ?: primary?.display("shortViewCountText") ?: primary?.display("viewCountText"),
+        primary?.display("dateText") ?: metadata?.display("publishedTimeText") ?: metadata?.display("publishedTime"),
         root?.objects("engagementPanelSectionListRenderer")?.firstOrNull { it.text("panelIdentifier") == "engagement-panel-comments-section" }
             ?.objects("engagementPanelTitleHeaderRenderer")?.firstOrNull()?.display("contextualInfo"))
 }

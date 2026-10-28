@@ -2,7 +2,7 @@ package com.liskovsoft.youtubeapi.videoinfo.V2
 
 // CommonItems / CommonHelper, upstream 7c2451ea, common/models/gen.
 internal val contentRenderers = mapOf("videoRenderer" to "video", "gridVideoRenderer" to "video",
-    "compactVideoRenderer" to "video", "playlistVideoRenderer" to "video", "reelItemRenderer" to "short",
+    "compactVideoRenderer" to "video", "pivotVideoRenderer" to "video", "playlistVideoRenderer" to "video", "reelItemRenderer" to "short",
     "channelRenderer" to "channel", "gridChannelRenderer" to "channel", "compactChannelRenderer" to "channel",
     "playlistRenderer" to "playlist", "gridPlaylistRenderer" to "playlist", "compactPlaylistRenderer" to "playlist",
     "tileRenderer" to "tile", "lockupViewModel" to "lockup", "shortsLockupViewModel" to "short")
