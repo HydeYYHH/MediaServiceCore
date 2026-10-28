@@ -20,6 +20,17 @@ class AccountSession(private var context: RequestContext = RequestContext()) {
     private var accounts = emptyList<Account>()
     @Synchronized fun snapshot() = context
     @Synchronized fun accounts(): List<Account> = accounts.toList()
+    @Synchronized fun updateAccounts(items: List<Account>): Boolean {
+        if (!context.signedIn) return false
+        val selected = items.firstOrNull { it.id == context.accountId && !it.disabled }
+            ?: items.firstOrNull { it.selected && !it.disabled } ?: items.firstOrNull { !it.disabled }
+        accounts = items.map { it.copy(selected = it.id == selected?.id) }
+        if (context.accountId != selected?.id || context.onBehalfOfUser != selected?.pageId) {
+            context = context.copy(accountId = selected?.id, onBehalfOfUser = selected?.pageId,
+                generation = context.generation + 1)
+        }
+        return true
+    }
     @Synchronized fun replace(token: AccessToken, items: List<Account>) {
         accounts = items.toList()
         val selected = items.firstOrNull { it.selected && !it.disabled }
