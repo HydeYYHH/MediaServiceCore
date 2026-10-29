@@ -29,7 +29,8 @@ data class WatchPage @JvmOverloads constructor(val videoId: String?, val title: 
     val chapters: List<Chapter>, val related: List<MediaItem>, val nextKey: String?, val commentsKey: String?, val chatKey: String?, val storyboard: Storyboard?,
     val queue: WatchQueue? = null, val resumeSeconds: Long? = null,
     val authorThumbnail: String? = null, val rating: String? = null, val subscribed: Boolean? = null,
-    val viewCount: String? = null, val published: String? = null, val commentCount: String? = null)
+    val viewCount: String? = null, val published: String? = null, val commentCount: String? = null,
+    val likeCount: String? = null)
 fun watchPage(body: String, videoId: String? = null): WatchPage {
     val root = jsonObject(body)
     val singleColumn = root?.path("contents", "singleColumnWatchNextResults")
@@ -58,6 +59,10 @@ fun watchPage(body: String, videoId: String? = null): WatchPage {
     val queue = root?.let(::readWatchQueue)
     val like = controls?.path("likeButton", "toggleButtonRenderer") ?: control("LIKE_BUTTON")?.obj("toggleButtonRenderer")
     val dislike = controls?.path("dislikeButton", "toggleButtonRenderer") ?: control("DISLIKE_BUTTON")?.obj("toggleButtonRenderer")
+    val likeRenderer = metadata?.path("likeButton", "likeButtonRenderer")
+        ?: controls?.objects("likeButtonRenderer")?.firstOrNull()
+    val likeButton = root?.objects("segmentedLikeDislikeButtonViewModel")?.firstOrNull()
+        ?.obj("likeButtonViewModel")?.objects("defaultButtonViewModel")?.firstOrNull()?.obj("buttonViewModel")
     val rating = when {
         like?.bool("isToggled") == true -> "LIKE"
         dislike?.bool("isToggled") == true -> "DISLIKE"
@@ -82,8 +87,13 @@ fun watchPage(body: String, videoId: String? = null): WatchPage {
         primary?.objects("videoViewCountRenderer")?.firstOrNull()?.let { it.display("shortViewCount") ?: it.display("viewCount") }
             ?: primary?.display("shortViewCountText") ?: primary?.display("viewCountText"),
         primary?.display("dateText") ?: metadata?.display("publishedTimeText") ?: metadata?.display("publishedTime"),
-        root?.objects("engagementPanelSectionListRenderer")?.firstOrNull { it.text("panelIdentifier") == "engagement-panel-comments-section" }
-            ?.objects("engagementPanelTitleHeaderRenderer")?.firstOrNull()?.display("contextualInfo"))
+        root?.objects("commentsEntryPointRenderer")?.firstOrNull()?.display("commentCount")
+            ?: root?.objects("engagementPanelSectionListRenderer")?.firstOrNull {
+                it.text("panelIdentifier") in setOf("engagement-panel-comments-section", "comment-item-section")
+            }?.objects("engagementPanelTitleHeaderRenderer")?.firstOrNull()?.display("contextualInfo"),
+        likeRenderer?.let { it.display("likeCountText") ?: it.long("likeCount")?.toString() }
+            ?: like?.display("defaultText")?.takeIf { text -> text.any(Char::isDigit) }
+            ?: likeButton?.text("title")?.takeIf { text -> text.any(Char::isDigit) })
 }
 @JvmOverloads
 fun loadWatch(videoId: String?, context: RequestContext = RequestContext(), continuation: String? = null,

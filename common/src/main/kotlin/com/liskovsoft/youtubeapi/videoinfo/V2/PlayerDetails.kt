@@ -2,6 +2,8 @@ package com.liskovsoft.youtubeapi.videoinfo.V2
 
 data class PlayerDetails(val videoId: String?, val title: String?, val author: String?, val channelId: String?,
     val description: String?, val durationSeconds: Long?, val viewCount: Long?, val thumbnail: String?, val liveContent: Boolean,
+    /** True only while the stream is live now; [liveContent] stays true after a stream ends. */
+    val live: Boolean = false,
     val tracking: PlayerTracking? = null)
 
 fun loadPlayerDetails(videoId: String, context: RequestContext = RequestContext(), http: HttpClient = JvmHttpClient()): ReadResult<PlayerDetails> {
@@ -19,7 +21,11 @@ internal fun playerRange(node: Json.Obj?): PlayerRange? {
 }
 internal fun readPlayerDetails(root: Json.Obj): PlayerDetails? {
     val d = root.obj("videoDetails") ?: return null
+    // isLiveContent marks every stream that ever was live; isLive only while it runs.
+    val live = d.bool("isLive") == true ||
+        root.obj("playabilityStatus")?.fields?.containsKey("liveStreamability") == true
     return PlayerDetails(d.text("videoId"), d.text("title"), d.text("author"), d.text("channelId"),
         d.text("shortDescription"), d.long("lengthSeconds"), d.long("viewCount"), d.thumbnail("thumbnail"), d.bool("isLiveContent") == true,
+        live,
         playerTracking(root))
 }
