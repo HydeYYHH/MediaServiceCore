@@ -16,4 +16,38 @@ class LibraryBrowseTest {
         val http = object : HttpClient { override fun execute(request: HttpRequest) = HttpReply(200, """{"guideEntryRenderer":{"title":{"simpleText":"Ada"},"navigationEndpoint":{"browseEndpoint":{"browseId":"UCada"}}}}""") }
         assertEquals("UCada", loadSubscribedChannels(RequestContext("a","t"), http).value!!.single().id)
     }
+
+    @Test fun readsFormattedGuideTitlesWithoutAFallbackRequest() {
+        var calls = 0
+        val http = object : HttpClient { override fun execute(request: HttpRequest): HttpReply {
+            calls++
+            return HttpReply(200, """{"guideEntryRenderer":{"formattedTitle":{"simpleText":"Ada"},"navigationEndpoint":{"browseEndpoint":{"browseId":"UCada"}}}}""")
+        }}
+        assertEquals("Ada", loadSubscribedChannels(RequestContext("a", "t"), http).value!!.single().title)
+        assertEquals(1, calls)
+    }
+
+    @Test fun anAccountOnlyGuideFallsBackToTheSubscribedChannelsBrowse() {
+        var calls = 0
+        val http = object : HttpClient { override fun execute(request: HttpRequest): HttpReply {
+            calls++
+            assertEquals("Bearer token", request.headers["Authorization"])
+            return if (request.url.contains("guide")) HttpReply(200, """{"guideAccountEntryRenderer":{}}""")
+            else {
+                assertEquals("FEchannels", jsonObject(request.body)!!.text("browseId"))
+                HttpReply(200, """{"channelRenderer":{"channelId":"UCada","title":{"simpleText":"Ada"},"thumbnail":{"thumbnails":[{"url":"https://example.com/avatar"}]}}}""")
+            }
+        }}
+        val item = loadSubscribedChannels(RequestContext("a", "token"), http).value!!.single()
+        assertEquals("UCada", item.id)
+        assertEquals("Ada", item.title)
+        assertEquals("https://example.com/avatar", item.thumbnail)
+        assertEquals(2, calls)
+    }
+
+    @Test fun aRejectedFallbackRemainsAnError() {
+        val http = object : HttpClient { override fun execute(request: HttpRequest) =
+            if (request.url.contains("guide")) HttpReply(200, "{}") else HttpReply(403, "{}") }
+        assertFalse(loadSubscribedChannels(RequestContext("a", "token"), http).ok)
+    }
 }

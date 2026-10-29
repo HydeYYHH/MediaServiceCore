@@ -25,7 +25,8 @@ internal fun commentRenderers(root: Json.Obj, section: Json.Obj): List<Json.Obj>
 internal fun commentSortOptions(root: Json.Obj): List<CommentSort> =
     root.objects("sortFilterSubMenuRenderer").flatMap { it.arr("subMenuItems") }.mapNotNull { it as? Json.Obj }.mapNotNull {
         val endpoint = it.obj("serviceEndpoint") ?: it.obj("navigationEndpoint")
-        val key = endpoint?.objects("continuationCommand")?.firstOrNull()?.text("token") ?: return@mapNotNull null
+        val key = endpoint?.objects("continuationCommand")?.firstOrNull()?.text("token")
+            ?: it.path("continuation", "reloadContinuationData")?.text("continuation") ?: return@mapNotNull null
         CommentSort(it.text("title"), key, it.bool("selected") == true)
     }
 internal fun commentNextKey(section: Json.Obj): String? =

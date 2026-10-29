@@ -6,26 +6,30 @@ fun channelPage(body: String, channelId: String? = null): ChannelPage {
     val root = jsonObject(body)
     val metadata = root?.objects("channelMetadataRenderer")?.firstOrNull()
     val header = root?.objects("c4TabbedHeaderRenderer")?.firstOrNull()
-    // The live channel header wraps the view model: pageHeaderRenderer.content.pageHeaderViewModel.
+    val channelHeader = root?.objects("channelHeaderRenderer")?.firstOrNull()
     val wrapped = root?.objects("pageHeaderRenderer")?.firstOrNull()
     val modern = root?.objects("pageHeaderViewModel")?.firstOrNull()
     val labels = modern?.path("metadata", "contentMetadataViewModel")?.let { content ->
         content.objects("text").mapNotNull { it.text("content") }
-    }.orEmpty()
-    // Subscribe toggle: legacy headers carry explicit state; the modern anonymous page only
-    // offers a sign-in modal, where null means "not observable", not "unsubscribed".
-    val subscribed = root?.objects("subscribeButtonRenderer")?.firstOrNull()?.bool("subscribed")
+    }.orEmpty() + channelHeader?.obj("subtitle")?.objects("lineItemRenderer")
+        .orEmpty().mapNotNull { it.display("text") }
+    val subscribed = channelHeader?.objects("subscribeButtonRenderer")?.firstOrNull()?.bool("subscribed")
+        ?: root?.objects("subscribeButtonRenderer")?.firstOrNull()?.bool("subscribed")
         ?: root?.objects("toggleButtonRenderer")?.firstOrNull { toggle ->
             toggle.objects("subscribeEndpoint").isNotEmpty() || toggle.objects("unsubscribeEndpoint").isNotEmpty()
         }?.bool("isToggled")
     return ChannelPage(metadata?.text("externalId") ?: header?.text("channelId") ?: channelId,
-        metadata?.text("title") ?: header?.text("title") ?: modern?.objects("dynamicTextViewModel")?.firstOrNull()?.display("text")
+        metadata?.text("title") ?: header?.text("title") ?: channelHeader?.display("title") ?: modern?.objects("dynamicTextViewModel")?.firstOrNull()?.display("text")
             ?: wrapped?.text("pageTitle"),
-        metadata?.text("description") ?: modern?.objects("descriptionPreviewViewModel")?.firstOrNull()?.display("description"),
-        metadata?.thumbnail("avatar") ?: header?.thumbnail("avatar") ?: modern?.objects("avatarViewModel")?.firstOrNull()?.thumbnail("image"),
+        metadata?.text("description") ?: channelHeader?.objects("aboutChannelViewModel")?.firstOrNull()?.text("description")
+            ?: channelHeader?.objects("selectableTextRenderer")?.firstOrNull()?.display("compactDescription")
+            ?: modern?.objects("descriptionPreviewViewModel")?.firstOrNull()?.display("description"),
+        metadata?.thumbnail("avatar") ?: header?.thumbnail("avatar") ?: channelHeader?.thumbnail("avatar")
+            ?: modern?.objects("avatarViewModel")?.firstOrNull()?.thumbnail("image"),
         header?.display("subscriberCountText") ?: labels.firstOrNull { it.contains("subscriber", true) }, browsePage(body),
         header?.display("channelHandleText") ?: labels.firstOrNull { it.startsWith("@") },
-        header?.thumbnail("banner") ?: modern?.objects("imageBannerViewModel")?.firstOrNull()?.thumbnail("image"),
+        header?.thumbnail("banner") ?: channelHeader?.thumbnail("backgroundImage")
+            ?: modern?.objects("imageBannerViewModel")?.firstOrNull()?.thumbnail("image"),
         header?.display("videosCountText") ?: labels.firstOrNull { it.contains("video", true) }, subscribed)
 }
 fun channelQuery(channelId: String, context: RequestContext = RequestContext(), params: String? = null,

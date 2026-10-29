@@ -20,4 +20,14 @@ class PlayerDetailsTest {
         assertEquals(playerTracking(body), details.tracking)
         assertNull(readPlayerDetails(jsonObject("""{"videoDetails":{"videoId":"v"}}""")!!)!!.tracking?.playbackUrl)
     }
+    @Test fun liveNowIsDistinctFromEverLiveContent() {
+        val active = readPlayerDetails(jsonObject("""{"videoDetails":{"videoId":"v","title":"T","isLive":true,"isLiveContent":true}}""")!!)!!
+        assertTrue(active.live); assertTrue(active.liveContent)
+        val ended = readPlayerDetails(jsonObject("""{"videoDetails":{"videoId":"v","title":"T","isLiveContent":true}}""")!!)!!
+        assertFalse(ended.live); assertTrue(ended.liveContent)
+        val viaPlayability = readPlayerDetails(jsonObject("""{"playabilityStatus":{"liveStreamability":{}},"videoDetails":{"videoId":"v","title":"T"}}""")!!)!!
+        assertTrue(viaPlayability.live)
+        val ordinary = readPlayerDetails(jsonObject("""{"videoDetails":{"videoId":"v","title":"T"}}""")!!)!!
+        assertFalse(ordinary.live); assertFalse(ordinary.liveContent)
+    }
 }

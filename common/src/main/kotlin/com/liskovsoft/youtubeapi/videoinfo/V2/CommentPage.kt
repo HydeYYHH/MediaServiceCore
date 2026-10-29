@@ -53,7 +53,7 @@ fun commentQuery(videoId: String?, continuation: String?, visitor: String?): Pla
 fun commentKey(body: String): String? {
     val root = jsonObject(body) ?: return null
     val panel = findPanel(root) ?: return null
-    return pageKey(panel)
+    return pageKey(panel.obj("content") ?: panel)
 }
 
 fun commentPage(body: String): CommentPage {
@@ -119,7 +119,8 @@ private fun postPage(query: PlayerQuery, post: (PlayerQuery) -> Pair<Int, String
 
 private fun findPanel(node: Json): Json.Obj? = when (node) {
     is Json.Obj -> {
-        if (node.text("panelIdentifier") == "engagement-panel-comments-section" && pageKey(node) != null) node
+        if (node.text("panelIdentifier") in setOf("engagement-panel-comments-section", "comment-item-section") &&
+            pageKey(node.obj("content") ?: node) != null) node
         else node.fields.values.asSequence().mapNotNull { findPanel(it) }.firstOrNull()
     }
     is Json.Arr -> node.items.asSequence().mapNotNull { findPanel(it) }.firstOrNull()

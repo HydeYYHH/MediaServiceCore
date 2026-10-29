@@ -16,7 +16,10 @@ fun loadSubscribedChannels(context: RequestContext, http: HttpClient = JvmHttpCl
     val items = result.value!!.objects("guideEntryRenderer").mapNotNull { entry ->
         val endpoint = entry.path("navigationEndpoint", "browseEndpoint") ?: return@mapNotNull null
         val id = endpoint.text("browseId")?.takeIf { it.startsWith("UC") } ?: return@mapNotNull null
-        MediaItem("channel", id, entry.display("title"), null, entry.thumbnail("thumbnail"), null, id, params = endpoint.text("params"))
+        MediaItem("channel", id, entry.display("title") ?: entry.display("formattedTitle"), null, entry.thumbnail("thumbnail"), null, id, params = endpoint.text("params"))
     }
-    return ReadResult(items.distinctBy { it.id })
+    if (items.isNotEmpty()) return ReadResult(items.distinctBy { it.id })
+    val channels = loadBrowse("FEchannels", context, http = http)
+    return if (channels.ok) ReadResult(channels.value!!.items.filter { it.kind == "channel" }.distinctBy { it.id })
+        else ReadResult(error = channels.error)
 }
