@@ -13,4 +13,8 @@ class WatchPageTest {
         assertTrue(tile.url.contains("/L0/M1.jpg")); assertEquals(0, tile.column); assertEquals(1, tile.row)
         assertNull(readStoryboard("bad")); assertNotNull(board.tile(Long.MAX_VALUE, 20000))
     }
+    @Test fun continuationCardsSurviveAnEmptyPivotShell() {
+        val p = watchPage("""{"contents":{"singleColumnWatchNextResults":{"pivot":{"sectionListRenderer":{"contents":[]}}}},"continuationContents":{"sectionListContinuation":{"contents":[{"shelfRenderer":{"content":{"horizontalListRenderer":{"items":[{"tileRenderer":{"contentId":"v1","tileMetadataRenderer":{"title":{"simpleText":"One"}}}}]}}}}]}}}""")
+        assertEquals(listOf("v1"), p.related.map { it.id })
+    }
 }

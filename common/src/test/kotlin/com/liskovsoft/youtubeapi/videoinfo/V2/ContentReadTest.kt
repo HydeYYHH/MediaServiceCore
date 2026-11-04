@@ -4,6 +4,12 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class ContentReadTest {
+    @Test fun readsShortsContentImagesAndFallsBackOnlyWhenMissing() {
+        val body = """{"contents":[{"shortsLockupViewModel":{"onTap":{"innertubeCommand":{"reelWatchEndpoint":{"videoId":"abcdefghijk"}}},"contentImage":{"thumbnailViewModel":{"image":{"sources":[{"url":"https://i.ytimg.com/vi/abcdefghijk/oar2.jpg"}]}}}}},{"shortsLockupViewModel":{"onTap":{"innertubeCommand":{"reelWatchEndpoint":{"videoId":"12345678901"}}}}}]}"""
+        val items = searchPage(body).items
+        assertEquals("https://i.ytimg.com/vi/abcdefghijk/oar2.jpg", items[0].thumbnail)
+        assertEquals("https://i.ytimg.com/vi/12345678901/hqdefault.jpg", items[1].thumbnail)
+    }
     @Test fun readsTileMetadataLinesAndDuration() {
         val body = """{"contents":[{"tileRenderer":{"onSelectCommand":{"watchEndpoint":{"videoId":"video"}},"header":{"tileHeaderRenderer":{"thumbnail":{"thumbnails":[{"url":"https://image"}]},"thumbnailOverlays":[{"thumbnailOverlayTimeStatusRenderer":{"text":{"simpleText":"3:42"}}}]}},"metadata":{"tileMetadataRenderer":{"title":{"simpleText":"A song"},"lines":[{"lineRenderer":{"items":[{"lineItemRenderer":{"text":{"runs":[{"text":"Artist","navigationEndpoint":{"browseEndpoint":{"browseId":"UCartist"}}}]}}}]}},{"lineRenderer":{"items":[{"lineItemRenderer":{"text":{"simpleText":"12M views"}}},{"lineItemRenderer":{"text":{"simpleText":"•"}}},{"lineItemRenderer":{"text":{"simpleText":"2 days ago"}}}]}}]}}}}]}"""
         val item = searchPage(body).items.single()

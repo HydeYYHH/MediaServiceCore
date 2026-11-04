@@ -29,9 +29,16 @@ internal fun readWatchQueue(root: Json.Obj): WatchQueue? {
         pageKey(container), metadata.long("totalVideos"), metadata.bool("isInfinite") == true)
 }
 
-internal fun resumeSeconds(root: Json.Obj, queue: WatchQueue?): Long? {
-    val current = root.path("currentVideoEndpoint", "watchEndpoint")?.long("startTimeSeconds")
-    val resume = root.objects("resumePlaybackEndpoint").firstOrNull()
+internal fun resumeSeconds(root: Json.Obj, queue: WatchQueue?, videoId: String? = null): Long? {
+    val endpoint = root.path("currentVideoEndpoint", "watchEndpoint")
+    val target = videoId ?: endpoint?.text("videoId")
+    fun Json.Obj.matches() = target == null || text("videoId") == null || text("videoId") == target
+    val current = endpoint?.takeIf { it.matches() }?.long("startTimeSeconds")
+    val resume = root.obj("resumePlaybackEndpoint")?.takeIf { it.matches() }
+        ?: root.objects("resumePlaybackEndpoint").firstOrNull { target != null && it.text("videoId") == target }
+    val selected = queue?.videos?.firstOrNull {
+        it.index == queue.index && (target == null || it.videoId == target)
+    }
     return (current ?: resume?.long("startTimeSeconds") ?: resume?.long("resumePositionMs")?.div(1000)
-        ?: queue?.videos?.firstOrNull { it.index == queue.index }?.startSeconds)?.takeIf { it >= 0 }
+        ?: selected?.startSeconds)?.takeIf { it >= 0 }
 }

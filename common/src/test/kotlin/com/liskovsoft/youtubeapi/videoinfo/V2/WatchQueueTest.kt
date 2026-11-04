@@ -4,6 +4,20 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class WatchQueueTest {
+    @Test fun resumePositionNeverComesFromAnUnrelatedRecommendation() {
+        val related = """{"resumePlaybackEndpoint":{"videoId":"other","startTimeSeconds":61}}"""
+        assertNull(watchPage("""{"related":[$related]}""", "current").resumeSeconds)
+        assertNull(watchPage("""{"related":[{"resumePlaybackEndpoint":{"startTimeSeconds":61}}]}""", "current").resumeSeconds)
+        assertNull(watchPage("""{"currentVideoEndpoint":{"watchEndpoint":{"videoId":"other","startTimeSeconds":61}}}""", "current").resumeSeconds)
+        assertEquals(9L, watchPage("""{"related":[$related,{"resumePlaybackEndpoint":{"videoId":"current","resumePositionMs":9500}}]}""", "current").resumeSeconds)
+    }
+
+    @Test fun currentVideoResumeTakesPrecedenceAndRetainsAnExplicitZero() {
+        val body = """{"currentVideoEndpoint":{"watchEndpoint":{"videoId":"current","startTimeSeconds":0}},"resumePlaybackEndpoint":{"videoId":"current","startTimeSeconds":24}}"""
+        assertEquals(0L, watchPage(body, "current").resumeSeconds)
+        assertEquals(24L, watchPage("""{"resumePlaybackEndpoint":{"startTimeSeconds":24}}""", "current").resumeSeconds)
+    }
+
     @Test fun preservesDuplicateEntriesAndNavigationByIndex() {
         fun video(id: String, index: Int, selected: Boolean) = """{"playlistPanelVideoRenderer":{"videoId":"$id","selected":$selected,"navigationEndpoint":{"watchEndpoint":{"videoId":"$id","playlistId":"PL","index":$index,"startTimeSeconds":37}}}}"""
         val body = "{\"contents\":{\"twoColumnWatchNextResults\":{\"playlist\":{\"playlist\":{\"playlistId\":\"PL\",\"currentIndex\":1,\"contents\":[${video("same", 0, false)},${video("same", 1, true)},${video("next", 2, false)}]}}}}}"
