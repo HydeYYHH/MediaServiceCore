@@ -8,16 +8,26 @@ internal fun queryInContext(query: PlayerQuery, context: RequestContext): Player
 }
 fun performComment(query: PlayerQuery, context: RequestContext, http: HttpClient = JvmHttpClient()): ReadResult<CommentActionReply> {
     if (!context.signedIn) return ReadResult(error = RequestError(RequestFailure.AUTH, "sign_in_required"))
-    val reply = requestObject(queryInContext(query, context), http)
+    val reply = requestAction(queryInContext(query, context), http)
     if (!reply.ok) return ReadResult(error = reply.error)
-    val action = actionReply(reply.value!!)
-    return if (action.ok) ReadResult(CommentActionReply(commentPage(reply.value.encode()).comments.firstOrNull(), action.value!!))
-        else ReadResult(error = action.error)
+    val action = requireNotNull(reply.value)
+    return ReadResult(CommentActionReply(commentPage(action.body).comments.firstOrNull(), action))
 }
 fun createComment(text: String?, createKey: String?, context: RequestContext, http: HttpClient = JvmHttpClient()) =
     performComment(createCommentQuery(text, createKey, context.visitor), context, http)
 fun replyComment(text: String?, replyCreateKey: String?, context: RequestContext, http: HttpClient = JvmHttpClient()) =
     performComment(replyCommentQuery(text, replyCreateKey, context.visitor), context, http)
+fun createVideoComment(videoId: String, text: String?, createKey: String?, context: RequestContext,
+    http: HttpClient = JvmHttpClient()): ReadResult<CommentActionReply> {
+    if (!videoIdAccepted(videoId)) return ReadResult(error = RequestError(RequestFailure.INVALID, "invalid_video_id"))
+    return createComment(text, createKey?.takeIf(String::isNotBlank) ?: commentCreationParameters(videoId), context, http)
+}
+fun replyVideoComment(videoId: String, parentId: String, text: String?, replyCreateKey: String?, context: RequestContext,
+    http: HttpClient = JvmHttpClient()): ReadResult<CommentActionReply> {
+    if (!videoIdAccepted(videoId) || parentId.isBlank() || parentId.length > 1024)
+        return ReadResult(error = RequestError(RequestFailure.INVALID, "invalid_comment_target"))
+    return replyComment(text, replyCreateKey?.takeIf(String::isNotBlank) ?: commentCreationParameters(videoId, parentId), context, http)
+}
 fun deleteComment(comment: Comment, context: RequestContext, http: HttpClient = JvmHttpClient()) =
     performComment(commentActionQuery(comment.deleteKey, context.visitor), context, http)
 fun likeComment(comment: Comment, context: RequestContext, http: HttpClient = JvmHttpClient()) =

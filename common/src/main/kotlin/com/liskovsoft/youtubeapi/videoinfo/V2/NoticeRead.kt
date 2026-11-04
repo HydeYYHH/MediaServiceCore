@@ -23,5 +23,5 @@ fun sendFeedback(token: String, context: RequestContext, http: HttpClient = JvmH
     val response = signedAction("feedback","\"feedbackTokens\":[${jsonQuote(token)}]",context,http)
     if (!response.ok) return ReadResult(error=response.error)
     val reply = feedbackReply(response.value!!.body)
-    return if (reply.processed) ReadResult(reply) else ReadResult(error=RequestError(RequestFailure.HTTP,"feedback_not_processed"))
+    return if (reply.processed) ReadResult(reply) else ReadResult(error=RequestError(RequestFailure.HTTP,"feedback_not_processed", status = response.value.httpStatus))
 }
