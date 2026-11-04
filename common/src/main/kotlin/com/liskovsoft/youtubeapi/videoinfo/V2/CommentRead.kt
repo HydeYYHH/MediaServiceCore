@@ -48,6 +48,7 @@ fun loadComments(videoId: String, context: RequestContext, continuation: String?
     if (!response.ok) return ReadResult(error = response.error)
     var page = commentPage(response.value!!.encode())
     if (opened != null) page = page.copy(
+        createKey = page.createKey ?: commentPage(opened.encode()).createKey,
         sortOptions = page.sortOptions.ifEmpty { commentSortOptions(opened) },
         total = watchPage(opened.encode(), videoId).commentCount)
     return ReadResult(page)
