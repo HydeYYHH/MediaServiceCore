@@ -12,10 +12,9 @@ internal fun readAccessToken(root: Json.Obj, nowMs: Long, refresh: String? = nul
     return AccessToken(access, root.text("refresh_token") ?: refresh, nowMs + lifetime * 1000)
 }
 internal fun tokenReply(query: PlayerQuery, http: HttpClient): ReadResult<Json.Obj> {
-    val reply = try { http.execute(query.request()) } catch (_: InterruptedException) {
-        Thread.currentThread().interrupt()
-        return ReadResult(error = RequestError(RequestFailure.CANCELLED, "cancelled"))
-    } catch (_: Exception) { return ReadResult(error = RequestError(RequestFailure.TRANSPORT, "transport_failed")) }
+    val reply = try { http.execute(query.request()) } catch (error: Exception) {
+        return ReadResult(error = transportError(error))
+    }
     val root = jsonObject(reply.body) ?: return ReadResult(error = RequestError(RequestFailure.PARSE, "invalid_token_reply", reply.status))
     val code = root.text("error")
     if (code != null || reply.status !in 200..299) return ReadResult(error = RequestError(RequestFailure.AUTH, code ?: "http_${reply.status}", reply.status))

@@ -5,6 +5,20 @@ import com.sun.net.httpserver.HttpServer
 import java.net.InetSocketAddress
 
 class RequestContextTest {
+    @Test fun visitorIsConsistentBetweenTheClientBodyAndHeader() {
+        val query = contextualQuery(playerQuery(PlayerClient.TV, "video", "old"), RequestContext(visitor = "paired"))
+        assertEquals("paired", query.headers["X-Goog-Visitor-Id"])
+        assertEquals("paired", jsonObject(query.body)?.path("context", "client")?.text("visitorData"))
+    }
+    @Test fun visitorCookiesStayOnAnonymousApiRequests() {
+        val context = RequestContext(visitor = "visitor", visitorCookie = "VISITOR_INFO1_LIVE=cookie")
+        val query = homeQuery(context = context)
+        assertEquals(context.visitorCookie, query.headers["Cookie"])
+        assertNull(contextualQuery(query, context.copy(accessToken = "account")).headers["Cookie"])
+        assertNull(contextualQuery(query.copy(url = "https://example.com/youtubei/v1/browse"), context).headers["Cookie"])
+        assertNotEquals(context.scope(), context.copy(visitorCookie = "other").scope())
+        assertFalse(context.toString().contains("cookie"))
+    }
     @Test fun keepsAndIsolatesIdentity() {
         val c = RequestContext("a", "secret", "v", "zh", "CN")
         val q = youtubeQuery(YOUTUBE_API + "browse", payload("browseId" to "home"), c)

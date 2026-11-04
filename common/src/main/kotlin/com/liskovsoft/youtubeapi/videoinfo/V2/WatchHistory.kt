@@ -1,5 +1,9 @@
 package com.liskovsoft.youtubeapi.videoinfo.V2
 
+import java.net.URI
+import java.util.LinkedHashMap
+import java.util.UUID
+
 data class PlayerTracking(val playbackUrl: String?, val watchTimeUrl: String?)
 fun playerTracking(body: String): PlayerTracking = playerTracking(jsonObject(body))
 internal fun playerTracking(root: Json.Obj?): PlayerTracking {
@@ -19,7 +23,7 @@ class WatchHistory(private val http: HttpClient = JvmHttpClient()) {
     /** One playback session: its cpn and the last position watch time was reported at. */
     private class Session(val cpn: String, var lastMs: Long)
 
-    private val sessions = java.util.LinkedHashMap<String, Session>()
+    private val sessions = LinkedHashMap<String, Session>()
     private var activeKey: String? = null
 
     @Synchronized fun update(videoId: String, positionMs: Long, durationMs: Long, tracking: PlayerTracking,
@@ -65,7 +69,7 @@ class WatchHistory(private val http: HttpClient = JvmHttpClient()) {
 
     private fun send(base: String?, playback: Boolean, videoId: String, cpn: String, positionMs: Long,
         durationMs: Long, startMs: Long, endMs: Long, context: RequestContext, http: HttpClient): ReadResult<String> {
-        val uri = try { java.net.URI(base ?: "") } catch (_: Exception) { null }
+        val uri = try { URI(base ?: "") } catch (_: Exception) { null }
         if (uri?.scheme != "https" || uri.host !in setOf("www.youtube.com", "s.youtube.com") || uri.rawUserInfo != null || (uri.port != -1 && uri.port != 443) ||
             uri.path != if (playback) "/api/stats/playback" else "/api/stats/watchtime")
             return ReadResult(error = RequestError(RequestFailure.INVALID, "invalid_tracking_url"))
@@ -74,12 +78,12 @@ class WatchHistory(private val http: HttpClient = JvmHttpClient()) {
             "st" to (startMs / 1000.0).toString(), "et" to (endMs / 1000.0).toString())
         for ((name, value) in fields) url = urlWithParameter(url, name, value)
         val headers = (if (!context.accessToken.isNullOrBlank()) mapOf("Authorization" to "Bearer " + context.accessToken)
-            else context.webSession?.headers().orEmpty()
+            else context.webSession?.headers().orEmpty() + context.visitorCookie?.let { mapOf("Cookie" to it) }.orEmpty()
             ) + (context.visitor?.let { mapOf("X-Goog-Visitor-Id" to it) } ?: emptyMap())
         return requestBody(HttpRequest("GET", url, headers), http)
     }
 
-    private fun newCpn(): String = java.util.UUID.randomUUID().toString().replace("-", "").take(16)
+    private fun newCpn(): String = UUID.randomUUID().toString().replace("-", "").take(16)
 
     @Synchronized fun reset() {
         sessions.clear()
