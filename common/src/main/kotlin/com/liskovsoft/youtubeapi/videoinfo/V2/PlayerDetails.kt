@@ -4,7 +4,8 @@ data class PlayerDetails(val videoId: String?, val title: String?, val author: S
     val description: String?, val durationSeconds: Long?, val viewCount: Long?, val thumbnail: String?, val liveContent: Boolean,
     /** True only while the stream is live now; [liveContent] stays true after a stream ends. */
     val live: Boolean = false,
-    val tracking: PlayerTracking? = null)
+    val tracking: PlayerTracking? = null,
+    val published: String? = null)
 
 fun loadPlayerDetails(videoId: String, context: RequestContext = RequestContext(), http: HttpClient = JvmHttpClient()): ReadResult<PlayerDetails> {
     if (!videoIdAccepted(videoId)) return ReadResult(error = RequestError(RequestFailure.INVALID, "invalid_video_id"))
@@ -27,5 +28,6 @@ internal fun readPlayerDetails(root: Json.Obj): PlayerDetails? {
     return PlayerDetails(d.text("videoId"), d.text("title"), d.text("author"), d.text("channelId"),
         d.text("shortDescription"), d.long("lengthSeconds"), d.long("viewCount"), d.thumbnail("thumbnail"), d.bool("isLiveContent") == true,
         live,
-        playerTracking(root))
+        playerTracking(root),
+        root.path("microformat", "playerMicroformatRenderer")?.text("publishDate"))
 }

@@ -17,7 +17,7 @@ class ChatSendTest {
         val body = jsonObject(request.body)!!
         assertEquals("chat-key", body.text("params"))
         assertEquals("fixed-id", body.text("clientMessageId"))
-        val runs = body.path("richMessage")!!.arr("textRuns")
+        val runs = body.path("richMessage")!!.arr("textSegments")
         assertEquals("hello \"chat\"", (runs.single() as Json.Obj).text("text"))
     }
     @Test fun validatesInputAndRequiresSignIn() {
