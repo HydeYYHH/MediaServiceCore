@@ -1,8 +1,15 @@
 package com.liskovsoft.youtubeapi.videoinfo.V2
 
+import java.net.URI
+
 interface PlayerScriptProvider {
     fun script(videoId: String, context: RequestContext, fresh: Boolean): ReadResult<PlayerScript>
+
+    /** A revision known without I/O; null requires resolving the script before cache lookup. */
+    fun cacheKey(videoId: String, context: RequestContext): String? = null
 }
+
+internal class PlayerScriptException(val error: RequestError) : Exception(error.code)
 
 class JvmPlayerScripts(private val http: HttpClient = JvmHttpClient(), private val now: () -> Long = System::currentTimeMillis,
     maxEntries: Int = 8, private val ttlMs: Long = 30 * 60 * 1000) : PlayerScriptProvider {
@@ -16,7 +23,7 @@ class JvmPlayerScripts(private val http: HttpClient = JvmHttpClient(), private v
         val page = requestBody(HttpRequest("GET", pageUrl), http)
         if (!page.ok) return ReadResult(error = page.error)
         val url = playerScriptUrl(page.value!!) ?: return ReadResult(error = RequestError(RequestFailure.PARSE, "missing_player_script"))
-        val uri = try { java.net.URI(url) } catch (_: Exception) { null }
+        val uri = try { URI(url) } catch (_: Exception) { null }
         if (uri?.scheme != "https" || uri.host != "www.youtube.com" || uri.port !in listOf(-1, 443))
             return ReadResult(error = RequestError(RequestFailure.PARSE, "invalid_player_script_url"))
         val loaded = requestBody(HttpRequest("GET", url), http)

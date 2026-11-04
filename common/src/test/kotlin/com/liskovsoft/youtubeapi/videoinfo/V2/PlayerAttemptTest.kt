@@ -7,6 +7,45 @@ class PlayerAttemptTest {
     private val queues = PlayerClientQueues()
     private val walk = PlayerAttempt(queues)
 
+    @Test fun deferredClientsRunLastWithoutRetryingTheFailedPrefix() {
+        val asked = mutableListOf<PlayerClient>()
+        val result = walk.run(SignIn.SIGNED_OUT, deferred = setOf(PlayerClient.VISIONOS)) { client ->
+            asked += client
+            answer(hasDirectUrl = client == PlayerClient.VISIONOS)
+        }
+        assertEquals(PlayerClient.VISIONOS, result.client)
+        assertEquals(walk.begin(SignIn.SIGNED_OUT).filter { it != PlayerClient.VISIONOS } + PlayerClient.VISIONOS, asked)
+        assertEquals(asked.size, asked.distinct().size)
+    }
+
+    @Test fun exclusionsNeitherRunNorPromoteTheNextClient() {
+        val asked = mutableListOf<PlayerClient>()
+        walk.run(SignIn.SIGNED_OUT, excluded = setOf(PlayerClient.VISIONOS)) { client ->
+            asked += client
+            answer(hasDirectUrl = true)
+        }
+        assertEquals(listOf(PlayerClient.WEB), asked)
+        assertEquals(PlayerClient.VISIONOS, walk.begin(SignIn.SIGNED_OUT).first())
+    }
+
+    @Test fun liveSwitchKeepsDeferredClientsLastAndNeverRepeatsAClient() {
+        val asked = mutableListOf<PlayerClient>()
+        val result = walk.run(SignIn.SIGNED_OUT, deferred = setOf(PlayerClient.WEB)) { client ->
+            asked += client
+            answer(live = true, hasHls = client == PlayerClient.WEB)
+        }
+        assertEquals(PlaybackForm.LIVE, result.form)
+        assertEquals(PlayerClient.WEB, asked.last())
+        assertEquals(asked.size, asked.distinct().size)
+    }
+
+    @Test fun promotedWinnerStartsTheNextVideoWithoutReplayingFailures() {
+        walk.run(SignIn.SIGNED_OUT) { client -> answer(hasDirectUrl = client == PlayerClient.WEB) }
+        val asked = mutableListOf<PlayerClient>()
+        walk.run(SignIn.SIGNED_OUT) { client -> asked += client; answer(hasDirectUrl = true) }
+        assertEquals(listOf(PlayerClient.WEB), asked)
+    }
+
     @Test
     fun classifiesAnswers() {
         assertEquals(ClientOutcome.SOFT, clientOutcome(true, "OK", null, true, true, true, false))

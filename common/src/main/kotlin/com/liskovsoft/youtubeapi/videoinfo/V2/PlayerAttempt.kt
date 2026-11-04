@@ -1,5 +1,7 @@
 package com.liskovsoft.youtubeapi.videoinfo.V2
 
+import java.util.Locale
+
 private val contentStatuses = setOf(
     "UNPLAYABLE",
     "ERROR",
@@ -25,9 +27,9 @@ fun clientOutcome(
     return if (played) ClientOutcome.PLAYED else ClientOutcome.SOFT
 }
 
-private fun isBotCheck(reason: String?): Boolean {
+internal fun isBotCheck(reason: String?): Boolean {
     if (reason == null) return false
-    val text = reason.toLowerCase()
+    val text = reason.lowercase(Locale.ROOT)
     return text.contains("not a bot") || text.contains("unusual traffic")
 }
 
@@ -50,7 +52,9 @@ data class PlayerAnswer @JvmOverloads constructor(
     val expiresInSeconds: Long? = null,
     val details: PlayerDetails? = null,
     val captions: List<PlayerCaption> = emptyList(),
-    val expiresAtMs: Long? = null
+    val expiresAtMs: Long? = null,
+    val mediaWaitMs: Long = 0,
+    val mediaAvailableAtMs: Long = 0
 )
 
 data class PlayerFormat @JvmOverloads constructor(
@@ -87,9 +91,12 @@ class PlayerAttempt(private val queues: PlayerClientQueues) {
         queues.commit(key, attempts)
     }
 
-    fun run(signIn: SignIn, fetch: (PlayerClient) -> PlayerAnswer): AttemptResult {
+    fun run(signIn: SignIn, deferred: Set<PlayerClient> = emptySet(), excluded: Set<PlayerClient> = emptySet(),
+        fetch: (PlayerClient) -> PlayerAnswer): AttemptResult {
+        fun ordered(clients: List<PlayerClient>): List<PlayerClient> =
+            clients.filter { it !in excluded && it !in deferred } + clients.filter { it !in excluded && it in deferred }
         var form = PlaybackForm.VOD
-        var pending = begin(signIn)
+        var pending = ordered(begin(signIn))
         val tried = LinkedHashSet<PlayerClient>()
         val attempts = ArrayList<Pair<PlayerClient, ClientOutcome>>()
         var played: PlayerClient? = null
@@ -107,7 +114,7 @@ class PlayerAttempt(private val queues: PlayerClientQueues) {
                     played = client
                     break
                 }
-                pending = onLive(signIn, tried)
+                pending = ordered(onLive(signIn, tried))
                 index = 0
                 continue
             }

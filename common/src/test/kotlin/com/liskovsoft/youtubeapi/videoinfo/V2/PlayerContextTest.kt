@@ -1,6 +1,9 @@
 package com.liskovsoft.youtubeapi.videoinfo.V2
+
+import java.util.Locale
 import org.junit.Assert.*
 import org.junit.Test
+
 class PlayerContextTest {
     @Test fun bindsSolvingAndTokensToTheScriptVideoAndPurpose() {
         val purposes = ArrayList<TokenPurpose>()
@@ -34,7 +37,7 @@ class PlayerContextTest {
             }
             val error = loadPlayer("v", RequestContext(), http).error
             assertEquals(RequestFailure.UNSUPPORTED, error?.kind)
-            assertEquals("playability_${status.toLowerCase(java.util.Locale.ROOT)}", error?.code)
+            assertEquals("playability_${status.toLowerCase(Locale.ROOT)}", error?.code)
         }
     }
 
@@ -60,6 +63,38 @@ class PlayerContextTest {
         }
         val result = loadPlayer("v", RequestContext(), http, preference = PlaybackPreference(maxHeight = 480))
         assertEquals("no_matching_format", result.error?.code)
+    }
+
+    @Test fun verificationSurvivesLaterGenericLoginFailures() {
+        val attempts = mutableListOf<PlayerLoadAttempt>()
+        var calls = 0
+        val http = object : HttpClient {
+            override fun execute(request: HttpRequest): HttpReply {
+                val reason = if (calls++ == 0) "Sign in to confirm you're not a bot" else "Sign in"
+                return HttpReply(200, """{"playabilityStatus":{"status":"LOGIN_REQUIRED","reason":{"runs":[{"text":"$reason"}]}}}""")
+            }
+        }
+        val result = loadPlayer("video", RequestContext(), http, onAttempt = attempts::add)
+        assertEquals(RequestFailure.VERIFICATION, result.error?.kind)
+        assertEquals("playability_bot_check", result.error?.code)
+        assertEquals(6, attempts.size)
+        assertEquals("playability_bot_check", attempts.first().error?.code)
+        assertTrue(attempts.all { it.status == "LOGIN_REQUIRED" })
+    }
+
+    @Test fun verificationDoesNotPreventAnotherClientFromPlaying() {
+        val attempts = mutableListOf<PlayerLoadAttempt>()
+        var calls = 0
+        val http = object : HttpClient {
+            override fun execute(request: HttpRequest) = HttpReply(200, if (calls++ == 0)
+                """{"playabilityStatus":{"status":"LOGIN_REQUIRED","reason":"Sign in to confirm you're not a bot"}}"""
+                else """{"playabilityStatus":{"status":"OK"},"streamingData":{"formats":[{"url":"https://media.example.test/video.mp4"}]}}""")
+        }
+        val result = loadPlayer("video", RequestContext(), http, onAttempt = attempts::add)
+        assertTrue(result.ok)
+        assertEquals(PlayerClient.WEB, result.value?.client)
+        assertEquals(2, attempts.size)
+        assertNull(attempts.last().error)
     }
 
 }
