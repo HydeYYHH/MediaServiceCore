@@ -1,6 +1,9 @@
 package com.liskovsoft.youtubeapi.videoinfo.V2
+
+import java.net.URI
 import org.junit.Assert.*
 import org.junit.Test
+
 class WatchHistoryTest {
     @Test fun anonymousPlaybackUsesTheReturnedStatisticsHost() {
         val requests = mutableListOf<HttpRequest>()
@@ -11,14 +14,15 @@ class WatchHistoryTest {
             }
         }
         val history = WatchHistory(http)
-        val context = RequestContext(visitor = "visitor-data")
+        val context = RequestContext(visitor = "visitor-data", visitorCookie = "VISITOR_INFO1_LIVE=cookie")
         val tracking = PlayerTracking("https://s.youtube.com/api/stats/playback?ei=event&vm=keep",
             "https://s.youtube.com/api/stats/watchtime?of=keep")
         assertTrue(history.update("aqz-KE-bpKQ", 1000, 100_000, tracking, context).ok)
         assertTrue(history.update("aqz-KE-bpKQ", 11_000, 100_000, tracking, context).ok)
         assertEquals(2, requests.size)
-        assertTrue(requests.all { java.net.URI(it.url).host == "s.youtube.com" })
+        assertTrue(requests.all { URI(it.url).host == "s.youtube.com" })
         assertTrue(requests.all { it.headers["X-Goog-Visitor-Id"] == "visitor-data" })
+        assertTrue(requests.all { it.headers["Cookie"] == context.visitorCookie })
         assertEquals("1.0", urlParameter(requests.last().url, "st"))
         assertEquals("11.0", urlParameter(requests.last().url, "et"))
         assertEquals("keep", urlParameter(requests.first().url, "vm"))

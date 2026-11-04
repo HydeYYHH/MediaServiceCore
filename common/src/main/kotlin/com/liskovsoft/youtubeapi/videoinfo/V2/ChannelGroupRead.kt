@@ -1,9 +1,12 @@
 package com.liskovsoft.youtubeapi.videoinfo.V2
 
+import java.net.URI
+import java.util.UUID
+
 enum class GroupFormat { MSC, POCKETTUBE, NEWPIPE, GRAYJAY }
 
 private class GroupEnd(val code: String) : RuntimeException()
-private fun stableGroupId(format: GroupFormat, title: String) = java.util.UUID.nameUUIDFromBytes(
+private fun stableGroupId(format: GroupFormat, title: String) = UUID.nameUUIDFromBytes(
     (format.name + ":" + title).toByteArray(Charsets.UTF_8)).toString()
 
 // PocketTubeService / NewPipeService / GrayJayService, upstream 7c2451ea, channelgroups/importing.
@@ -27,7 +30,7 @@ fun readChannelGroups(text: String, format: GroupFormat? = null,
     }
     fun channels(values: List<Json>, youtubeOnly: Boolean = false) = values.mapNotNull {
         val value = (it as? Json.Str)?.value ?: throw GroupEnd("invalid_channel_url")
-        val host = try { java.net.URI(value).host } catch (_: Exception) { null }
+        val host = try { URI(value).host } catch (_: Exception) { null }
         if (youtubeOnly && host != null && host !in youtubeHosts) null else channel(value)
     }.distinctBy { it.id }
     return try {
@@ -62,16 +65,16 @@ fun readChannelGroups(text: String, format: GroupFormat? = null,
         if (groups.any { it.title.isBlank() } || groups.map { it.id }.distinct().size != groups.size) throw GroupEnd("invalid_group_identity")
         ReadResult(groups)
     } catch (error: GroupEnd) { ReadResult(error = RequestError(RequestFailure.PARSE, error.code)) }
-    catch (_: InterruptedException) {
+    catch (error: InterruptedException) {
         Thread.currentThread().interrupt()
-        ReadResult(error = RequestError(RequestFailure.CANCELLED, "cancelled"))
-    } catch (_: Exception) { ReadResult(error = RequestError(RequestFailure.TRANSPORT, "channel_resolution_failed")) }
+        ReadResult(error = RequestError(RequestFailure.CANCELLED, "cancelled", cause = error.javaClass.simpleName))
+    } catch (error: Exception) { ReadResult(error = transportError(error)) }
 }
 
 private val youtubeHosts = setOf("youtube.com", "www.youtube.com", "m.youtube.com", "music.youtube.com")
 private fun channelIdFromUrl(value: String): String? {
     if (value.startsWith("UC") && videoIdAccepted(value)) return value
-    val uri = try { java.net.URI(value) } catch (_: Exception) { return null }
+    val uri = try { URI(value) } catch (_: Exception) { return null }
     if (uri.host !in youtubeHosts) return null
     val parts = uri.path.orEmpty().trim('/').split('/')
     return parts.getOrNull(1)?.takeIf { parts.firstOrNull() == "channel" && it.startsWith("UC") && videoIdAccepted(it) }
