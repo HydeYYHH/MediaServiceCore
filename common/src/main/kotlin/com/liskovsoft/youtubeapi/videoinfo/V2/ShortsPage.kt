@@ -11,9 +11,11 @@ fun shortsPage(body: String): BrowsePage {
     val channel = root.objects("reelChannelBarViewModel").firstOrNull()
     val description = root.objects("videoDescriptionHeaderRenderer").firstOrNull()
     val endpoints = listOfNotNull(current, first) + root.arr("entries").mapNotNull {
-        (it as? Json.Obj)?.path("command", "reelWatchEndpoint")
+        (it as? Json.Obj)?.takeUnless { entry -> entry.isAdvertisement() }
+            ?.path("command", "reelWatchEndpoint")?.takeUnless { endpoint -> endpoint.isAdvertisement() }
     }
     val items = endpoints.mapNotNull { endpoint ->
+        if (endpoint.isAdvertisement()) return@mapNotNull null
         val id = endpoint.text("videoId") ?: return@mapNotNull null
         val primary = endpoint === (current ?: first)
         MediaItem("short", id, if (primary) title else null,

@@ -10,6 +10,7 @@ internal val contentRenderers = mapOf("videoRenderer" to "video", "gridVideoRend
 internal fun contentItems(root: Json): List<MediaItem> {
     val result = ArrayList<MediaItem>()
     fun visit(node: Json) {
+        if (node is Json.Obj && node.isAdvertisement()) return
         when (node) {
             is Json.Obj -> for ((name, value) in node.fields) {
                 if (name in contentRenderers) (value as? Json.Obj)?.let { contentItem(name, it) }?.let { result.add(it) }
@@ -24,6 +25,7 @@ internal fun contentItems(root: Json): List<MediaItem> {
 }
 
 private fun contentItem(type: String, item: Json.Obj): MediaItem? {
+    if (item.isAdvertisement()) return null
     val command = item.obj("navigationEndpoint") ?: item.obj("onSelectCommand") ?: item.path("onTap", "innertubeCommand")
         ?: item.path("rendererContext", "commandContext", "onTap", "innertubeCommand")
     val watch = command?.obj("watchEndpoint") ?: command?.obj("reelWatchEndpoint")
@@ -76,7 +78,8 @@ private fun contentItem(type: String, item: Json.Obj): MediaItem? {
     val published = stats.firstOrNull { part ->
         part.display("text")?.let { it.contains("ago", true) || it.contains("Streamed", true) || it.contains("Premiered", true) } == true
     }?.display("text")
-    val image = item.path("contentImage", "thumbnailViewModel")
+    val image = item.obj("thumbnail")?.obj("thumbnailViewModel")
+        ?: item.path("contentImage", "thumbnailViewModel")
         ?: item.path("contentImage", "collectionThumbnailViewModel", "primaryThumbnail", "thumbnailViewModel")
     val badge = item.objects("thumbnailBadgeViewModel").firstOrNull()
     val progress = item.objects("thumbnailOverlayResumePlaybackRenderer").firstOrNull()?.int("percentDurationWatched")
@@ -86,7 +89,8 @@ private fun contentItem(type: String, item: Json.Obj): MediaItem? {
         item.display("ownerText") ?: item.display("shortBylineText") ?: item.display("longBylineText")
             ?: item.obj("overlayMetadata")?.display("secondaryText") ?: author
             ?: tileLines.firstOrNull()?.firstOrNull()?.takeUnless { it.contains("ago", true) || it.contains("view", true) } ?: carouselAuthor,
-        item.thumbnail("thumbnail") ?: item.path("header", "tileHeaderRenderer")?.thumbnail("thumbnail") ?: image?.thumbnail("image"),
+        item.thumbnail("thumbnail") ?: item.path("header", "tileHeaderRenderer")?.thumbnail("thumbnail") ?: image?.thumbnail("image")
+            ?: if (kind == "short") "https://i.ytimg.com/vi/$id/hqdefault.jpg" else null,
         item.display("lengthText") ?: badge?.text("text")
             ?: item.objects("thumbnailOverlayTimeStatusRenderer").firstOrNull()?.display("text"),
         item.text("channelId") ?: item.objects("browseEndpoint").mapNotNull { it.text("browseId") }.firstOrNull { it.startsWith("UC") },
@@ -104,13 +108,19 @@ private fun contentItem(type: String, item: Json.Obj): MediaItem? {
             ?: carouselStats.firstNotNullOfOrNull { it.display("text")?.takeIf { text -> text.contains("ago", true) || text.contains("Streamed", true) } },
         item.display("videoCountText") ?: item.display("videoCount")
             ?: item.objects("thumbnailOverlayBottomPanelRenderer").firstOrNull()?.display("text")
-            ?: badge?.text("text")?.takeIf { kind == "playlist" })
+            ?: badge?.text("text")?.takeIf { kind == "playlist" },
+        if (kind in setOf("video", "short")) item.path("onLongPressCommand", "showEngagementPanelEndpoint")?.let { panel ->
+            val tag = panel.path("identifier")?.text("tag")
+            val params = panel.path("globalConfiguration")?.text("params")
+            if (tag.isNullOrBlank() || params.isNullOrBlank()) null else MenuEndpoint(tag, params)
+        } else null)
 }
 
 internal fun pageGroups(root: Json): List<MediaGroup> {
     val result = ArrayList<MediaGroup>()
     val names = setOf("shelfRenderer", "richShelfRenderer", "itemSectionRenderer")
     fun visit(node: Json) {
+        if (node is Json.Obj && node.isAdvertisement()) return
         when (node) {
             is Json.Obj -> for ((name, value) in node.fields) {
                 if (name in names && value is Json.Obj) {

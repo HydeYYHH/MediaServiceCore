@@ -51,10 +51,13 @@ fun watchPage(body: String, videoId: String? = null): WatchPage {
         root?.objects("macroMarkersListItemRenderer").orEmpty().mapNotNull {
             it.path("onTap", "watchEndpoint")?.long("startTimeSeconds")?.let { sec -> Chapter(it.display("title"), sec * 1000, it.thumbnail("thumbnail")) }
         }).filter { it.startMs >= 0 }.distinctBy { it.startMs }.sortedBy { it.startMs }
-    val recommendations = if (singleColumn != null) {
-        singleColumn.path("pivot", "pivot") ?: singleColumn.path("pivot", "sectionListRenderer")
-    } else root?.path("contents", "twoColumnWatchNextResults", "secondaryResults", "secondaryResults")
-        ?: root?.obj("continuationContents") ?: root
+    // Continuation cards can accompany an empty pivot; exclude autoplay from initial pages.
+    val recommendations = root?.obj("continuationContents")
+        ?: if (singleColumn != null) {
+            singleColumn.path("pivot", "pivot") ?: singleColumn.path("pivot", "sectionListRenderer")
+        } else {
+            root?.path("contents", "twoColumnWatchNextResults", "secondaryResults", "secondaryResults") ?: root
+        }
     val liveChat = root?.objects("liveChatRenderer")?.firstOrNull()
     val queue = root?.let(::readWatchQueue)
     val like = controls?.path("likeButton", "toggleButtonRenderer") ?: control("LIKE_BUTTON")?.obj("toggleButtonRenderer")
@@ -78,7 +81,8 @@ fun watchPage(body: String, videoId: String? = null): WatchPage {
             ?: owner?.objects("browseEndpoint")?.firstNotNullOfOrNull { it.text("browseId")?.takeIf { id -> id.startsWith("UC") } }
             ?: owner?.path("subscribeButton", "subscribeButtonRenderer")?.text("channelId") ?: details?.text("channelId"), chapters,
         recommendations?.let(::contentItems).orEmpty(), recommendations?.let(::pageKey), commentKey(body), liveChat?.let(::pageKey),
-        readStoryboard(root?.objects("playerStoryboardSpecRenderer")?.firstOrNull()?.text("spec")), queue, root?.let { resumeSeconds(it, queue) },
+        readStoryboard(root?.objects("playerStoryboardSpecRenderer")?.firstOrNull()?.text("spec")), queue,
+        root?.let { resumeSeconds(it, queue, details?.text("videoId") ?: metadata?.text("videoId") ?: videoId) },
         owner?.thumbnail("thumbnail"),
         rating,
         controls?.path("subscribeButton", "toggleButtonRenderer")?.bool("isToggled")
