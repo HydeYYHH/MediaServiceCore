@@ -36,6 +36,11 @@ fun openFormats(
     } else {
         try {
             solve(signatures, throttles)
+        } catch (failure: InterruptedException) {
+            Thread.currentThread().interrupt()
+            throw failure
+        } catch (failure: PlayerScriptException) {
+            throw failure
         } catch (failure: Exception) {
             return answer
         }

@@ -4,6 +4,50 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class PlaybackIdentityReviewTest {
+    @Test fun transportCapabilitiesParticipateInAcceptanceAndCacheIdentity() {
+        var requests = 0
+        val session = PlaybackSession(object : HttpClient {
+            override fun execute(request: HttpRequest): HttpReply {
+                requests++
+                return HttpReply(200, if (requests <= 2)
+                    """{"streamingData":{"serverAbrStreamingUrl":"https://media.test/sabr"},
+                        "playerConfig":{"mediaCommonConfig":{"mediaUstreamerRequestConfig":{"videoPlaybackUstreamerConfig":"config"}}}}"""
+                else """{"streamingData":{"formats":[{"url":"https://media.test/muxed"}]}}""")
+            }
+        })
+        val supported = session.load("video", includeMuxedFloor = false)
+        assertTrue(supported.ok)
+        assertEquals("https://media.test/sabr", supported.value!!.playback.sabrUrl)
+        val unsupported = session.load("video", preference = PlaybackPreference(allowSabr = false), includeMuxedFloor = false)
+        assertTrue(unsupported.ok)
+        assertEquals(3, requests)
+        assertEquals("https://media.test/muxed", unsupported.value!!.playback.videoUrl)
+        assertNull(unsupported.value!!.playback.sabrUrl)
+    }
+
+    @Test fun playbackSkipsTheSupplementalRequestButCatalogCanStillLoadIt() {
+        val paths = mutableListOf<String>()
+        val session = PlaybackSession(object : HttpClient {
+            override fun execute(request: HttpRequest): HttpReply {
+                paths += request.url
+                return if (request.url.contains("reel_item_watch"))
+                    HttpReply(200, """{"playerResponse":{"videoDetails":{"videoId":"video"},"streamingData":{"formats":[{"url":"https://floor","mimeType":"video/mp4","itag":18}]}}}""")
+                else HttpReply(200, """{"videoDetails":{"videoId":"video"},"streamingData":{"adaptiveFormats":[{"url":"https://primary","mimeType":"video/mp4","itag":137},{"url":"https://audio","mimeType":"audio/mp4","itag":140}]}}""")
+            }
+        })
+        val playback = session.load("video", includeMuxedFloor = false)
+        assertTrue(playback.ok)
+        assertEquals(1, paths.size)
+        assertTrue(playback.value!!.answer!!.muxedFormats.isEmpty())
+        session.load("video", includeMuxedFloor = false)
+        assertEquals(1, paths.size)
+        val catalog = session.load("video", includeMuxedFloor = true)
+        assertTrue(catalog.ok)
+        assertEquals(PlayerClient.ANDROID_VR, catalog.value!!.floorClient)
+        assertEquals(1, paths.count { it.contains("reel_item_watch") })
+        assertTrue(catalog.value!!.answer!!.muxedFormats.isNotEmpty())
+    }
+
     @Test fun refusedSupplementalClientIsNotMergedBackIntoTheCatalog() {
         var floorRequests = 0
         val http = object : HttpClient {

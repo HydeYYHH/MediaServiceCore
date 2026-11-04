@@ -3,7 +3,7 @@ package com.liskovsoft.youtubeapi.videoinfo.V2
 data class PlaybackPreference @JvmOverloads constructor(val maxHeight: Int = Int.MAX_VALUE, val mimeTypes: Set<String> = emptySet(),
     val audioId: String? = null, val audioLanguage: String? = null, val audioOnly: Boolean = false,
     val videoCodecs: Set<String> = emptySet(), val audioCodecs: Set<String> = emptySet(),
-    val maxFps: Int = Int.MAX_VALUE, val dynamicRange: VideoRange? = null)
+    val maxFps: Int = Int.MAX_VALUE, val dynamicRange: VideoRange? = null, val allowSabr: Boolean = true)
 
 internal fun preferredPlayback(answer: PlayerAnswer?, preference: PlaybackPreference): Playback {
     if (answer == null) return Playback(null, null, null)
@@ -38,7 +38,7 @@ internal fun preferredPlayback(answer: PlayerAnswer?, preference: PlaybackPrefer
     if (muxed != null) return if (preference.audioOnly) Playback(null, null, muxed.url) else Playback(null, muxed.url, null)
     if (manifest && answer.dashUrl != null) return Playback(null, null, null, dashUrl = answer.dashUrl)
     if (manifest && answer.hlsUrl != null) return Playback(answer.hlsUrl, null, null)
-    if (manifest && answer.sabrUrl != null && answer.ustreamerConfig != null)
+    if (manifest && preference.allowSabr && answer.sabrUrl != null && answer.ustreamerConfig != null)
         return Playback(null, null, null, sabrUrl = answer.sabrUrl, ustreamerConfig = answer.ustreamerConfig)
     return Playback(null, null, null)
 }

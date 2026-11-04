@@ -18,7 +18,8 @@ fun playerAnswer(body: String): PlayerAnswer {
     return PlayerAnswer(
         false,
         playability?.text("status"),
-        playability?.text("reason"),
+        playerReason(playability?.fields?.get("reason"))
+            ?: playerReason(playability?.path("errorScreen", "playerErrorMessageRenderer")?.fields?.get("subreason")),
         muxedUrls.isNotEmpty() || adaptiveUrls.isNotEmpty(),
         hlsUrl != null,
         muxedUrls.isNotEmpty(),
@@ -33,9 +34,18 @@ fun playerAnswer(body: String): PlayerAnswer {
         root.path("playerConfig", "mediaCommonConfig", "mediaUstreamerRequestConfig")?.text("videoPlaybackUstreamerConfig"),
         streaming?.long("expiresInSeconds"),
         readPlayerDetails(root),
-        translateCaptions(playerCaptions(body), captionLanguages(body), playerAudioTracks(body))
+        translateCaptions(playerCaptions(body), captionLanguages(body), playerAudioTracks(body)),
+        mediaWaitMs = mediaWaitMs(root)
     )
 }
+
+private fun playerReason(value: Json?): String? = when (value) {
+    is Json.Str -> value.value
+    is Json.Obj -> value.text("simpleText") ?: value.arr("runs")?.joinToString("") {
+        (it as? Json.Obj)?.text("text").orEmpty()
+    }
+    else -> null
+}?.take(1024)?.takeIf { it.isNotBlank() }
 
 private fun emptyAnswer() = PlayerAnswer(false, null, null, false, false, false, false)
 

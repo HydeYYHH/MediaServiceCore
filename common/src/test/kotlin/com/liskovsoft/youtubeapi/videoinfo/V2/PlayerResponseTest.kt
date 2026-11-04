@@ -97,12 +97,17 @@ class PlayerResponseTest {
     }
 
     @Test
-    fun ageCheckIgnoresObjectReason() {
+    fun readsStructuredPlayabilityReason() {
         val answer = playerAnswer("""
             {"playabilityStatus":{"status":"AGE_CHECK_REQUIRED","reason":{"simpleText":"Sign in"}}}
         """)
         assertEquals("AGE_CHECK_REQUIRED", answer.status)
-        assertNull(answer.reason)
+        assertEquals("Sign in", answer.reason)
+    }
+
+    @Test fun readsVerificationReasonFromTheErrorScreen() {
+        val answer = playerAnswer("""{"playabilityStatus":{"status":"LOGIN_REQUIRED","errorScreen":{"playerErrorMessageRenderer":{"subreason":{"runs":[{"text":"Sign in to confirm "},{"text":"you're not a bot"}]}}}}}""")
+        assertEquals("Sign in to confirm you're not a bot", answer.reason)
     }
 
     @Test

@@ -1,23 +1,63 @@
 package com.liskovsoft.youtubeapi.videoinfo.V2
 
-internal fun openBoundFormats(answer:PlayerAnswer,script:PlayerScript?,solver:PlayerSolver?):PlayerAnswer {
-    var challenge:PlayerChallenge?=null
-    val opened=openFormats(answer){signatures,throttles->
-        if(script==null||solver==null) PlayerChallenge(emptyMap(),emptyMap())
-        else solver.solve(PlayerChallengeRequest(script,signatures,throttles)).also{challenge=it}
+import java.net.URLDecoder
+import java.net.URLEncoder
+
+internal fun openBoundFormats(answer: PlayerAnswer, script: PlayerScript?, solver: PlayerSolver?,
+    scriptLoader: (() -> PlayerScript?)? = null): PlayerAnswer {
+    val manifest = answer.hlsUrl?.takeUnless { answer.live }?.let(::manifestThrottle)
+    var challenge: PlayerChallenge? = null
+    var attempted = false
+    fun solve(signatures: Set<String>, throttles: Set<String>): PlayerChallenge {
+        attempted = true
+        val pending = if (manifest == null) throttles else throttles + manifest.value
+        val activeScript = if (solver == null) null else scriptLoader?.invoke() ?: script
+        return (if (activeScript == null || solver == null) PlayerChallenge(emptyMap(), emptyMap())
+        else solver.solve(PlayerChallengeRequest(activeScript, signatures, pending))).also { challenge = it }
     }
-    fun usable(original:List<PlayerFormat>,formats:List<PlayerFormat>)=original.zip(formats).mapNotNull{(before,after)->
-        val cipher=before.cipher?.let{"x?"+it}
-        val signature=cipher?.let{urlParameter(it,"s")}
-        val base=before.url ?: cipher?.let{urlParameter(it,"url")}
-        val throttle=base?.let{urlParameter(it,"n")}
-        if(after.url.isNullOrBlank() || (signature!=null && challenge?.signatures?.get(signature).isNullOrBlank()) ||
-            (throttle!=null && challenge?.throttles?.get(throttle).isNullOrBlank())) null else after
+    val opened = openFormats(answer, ::solve)
+    if (manifest != null && !attempted) {
+        try {
+            solve(emptySet(), emptySet())
+        } catch (interrupted: InterruptedException) {
+            Thread.currentThread().interrupt()
+            throw interrupted
+        } catch (_: Exception) {
+            // An unresolved manifest cannot be used as a playable fallback.
+        }
     }
-    val muxed=usable(answer.muxedFormats,opened.muxedFormats)
-    val adaptive=usable(answer.adaptiveFormats,opened.adaptiveFormats)
-    return opened.copy(muxedFormats=muxed,adaptiveFormats=adaptive,muxedUrls=muxed.mapNotNull{it.url},
-        adaptiveUrls=adaptive.mapNotNull{it.url},hasMuxed=muxed.isNotEmpty(),hasDirectUrl=muxed.isNotEmpty()||adaptive.isNotEmpty())
+    fun usable(original: List<PlayerFormat>, formats: List<PlayerFormat>) = original.zip(formats).mapNotNull { (before, after) ->
+        val cipher = before.cipher?.let { "x?$it" }
+        val signature = cipher?.let { urlParameter(it, "s") }
+        val base = before.url ?: cipher?.let { urlParameter(it, "url") }
+        val throttle = base?.let { urlParameter(it, "n") }
+        if (after.url.isNullOrBlank() || (signature != null && challenge?.signatures?.get(signature).isNullOrBlank()) ||
+            (throttle != null && challenge?.throttles?.get(throttle).isNullOrBlank())) null else after
+    }
+    val muxed = usable(answer.muxedFormats, opened.muxedFormats)
+    val adaptive = usable(answer.adaptiveFormats, opened.adaptiveFormats)
+    val hls = if (manifest == null) opened.hlsUrl else challenge?.throttles?.get(manifest.value)
+        ?.takeIf { it.isNotBlank() }?.let { solved -> manifest.replace(solved) }
+    return opened.copy(muxedFormats = muxed, adaptiveFormats = adaptive, muxedUrls = muxed.mapNotNull { it.url },
+        adaptiveUrls = adaptive.mapNotNull { it.url }, hasMuxed = muxed.isNotEmpty(),
+        hasDirectUrl = muxed.isNotEmpty() || adaptive.isNotEmpty(), hlsUrl = hls, hasHls = hls != null)
+}
+
+private data class ManifestThrottle(val url: String, val range: IntRange, val value: String) {
+    fun replace(solved: String): String = url.replaceRange(range,
+        URLEncoder.encode(solved, "UTF-8").replace("+", "%20"))
+}
+
+private fun manifestThrottle(url: String): ManifestThrottle? {
+    val pathEnd = url.indexOfAny(charArrayOf('?', '#')).takeIf { it >= 0 } ?: url.length
+    val match = Regex("/n/([^/]+)").find(url.substring(0, pathEnd)) ?: return null
+    val group = requireNotNull(match.groups[1])
+    val value = try {
+        URLDecoder.decode(group.value.replace("+", "%2B"), "UTF-8")
+    } catch (_: IllegalArgumentException) {
+        group.value
+    }
+    return ManifestThrottle(url, group.range, value)
 }
 class CachedPlayerSolver(private val delegate:PlayerSolver,private val cache:PlaybackCache=MemoryPlaybackCache()):PlayerSolver {
     override fun solve(request:PlayerChallengeRequest):PlayerChallenge {

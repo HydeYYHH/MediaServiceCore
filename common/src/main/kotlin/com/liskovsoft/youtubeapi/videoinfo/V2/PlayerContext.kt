@@ -1,5 +1,7 @@
 package com.liskovsoft.youtubeapi.videoinfo.V2
 
+import java.util.Locale
+
 data class PlayerScript(val url: String, val source: String)
 data class PlayerChallengeRequest(val script: PlayerScript, val signatures: Set<String>, val throttles: Set<String>)
 interface PlayerSolver { fun solve(request: PlayerChallengeRequest): PlayerChallenge }
@@ -8,29 +10,44 @@ data class PlayerTokenRequest(val client: PlayerClient, val videoId: String, val
 data class PlayerToken(val value: String, val expiresAtMs: Long) { override fun toString() = "PlayerToken(expiresAtMs=$expiresAtMs)" }
 interface PlayerTokenProvider { fun token(request: PlayerTokenRequest): PlayerToken? }
 
+data class PlayerLoadAttempt(val client: PlayerClient, val status: String?, val error: RequestError?, val elapsedMs: Long)
+
 @JvmOverloads
 fun loadPlayer(videoId: String, context: RequestContext, http: HttpClient = JvmHttpClient(),
     script: PlayerScript? = null, solver: PlayerSolver? = null, tokens: PlayerTokenProvider? = null,
     queues: PlayerClientQueues = PlayerClientQueues(), excluded: Set<PlayerClient> = emptySet(),
     now: () -> Long = System::currentTimeMillis,
-    preference: PlaybackPreference = PlaybackPreference()): ReadResult<PlayerLoad> {
+    preference: PlaybackPreference = PlaybackPreference(),
+    onAttempt: ((PlayerLoadAttempt) -> Unit)? = null,
+    deferred: Set<PlayerClient> = emptySet(),
+    scriptLoader: (() -> PlayerScript?)? = null): ReadResult<PlayerLoad> {
     if (!videoIdAccepted(videoId)) return ReadResult(error = RequestError(RequestFailure.INVALID, "invalid_video_id"))
     var answer: PlayerAnswer? = null
     var lastError: RequestError? = null
+    var verification: RequestError? = null
     val signIn = if (context.signedIn) SignIn.SIGNED_IN else SignIn.SIGNED_OUT
     var tokenDeadline: Long? = null
+    val activeScript by lazy { scriptLoader?.invoke() ?: script }
     fun token(client: PlayerClient, purpose: TokenPurpose, identity: RequestContext): String? {
         val value = tokens?.token(PlayerTokenRequest(client, videoId, identity, purpose))
             ?.takeIf { it.value.isNotBlank() && it.expiresAtMs > now() } ?: return null
         tokenDeadline = minOf(tokenDeadline ?: Long.MAX_VALUE, value.expiresAtMs)
         return value.value
     }
-    val result = PlayerAttempt(queues).run(signIn) { client ->
+    val result = PlayerAttempt(queues).run(signIn, deferred, excluded) { client ->
         if (Thread.currentThread().isInterrupted) {
             lastError = RequestError(RequestFailure.CANCELLED, "cancelled")
             return@run PlayerAnswer(true, null, null, false, false, false, false)
         }
-        if (client in excluded) return@run PlayerAnswer(true, null, null, false, false, false, false)
+        val started = now()
+        var status: String? = null
+        var failure: RequestError? = null
+        fun rejected(error: RequestError, answer: PlayerAnswer = PlayerAnswer(true, null, null, false, false, false, false)): PlayerAnswer {
+            lastError = error
+            failure = error
+            if (error.kind == RequestFailure.VERIFICATION) verification = error
+            return answer
+        }
         tokenDeadline = null
         val identity = when (client) {
             PlayerClient.TV -> context
@@ -38,8 +55,10 @@ fun loadPlayer(videoId: String, context: RequestContext, http: HttpClient = JvmH
                 context.copy(accountId = null, accessToken = null, onBehalfOfUser = null)
             else -> context.anonymous()
         }
-        var query = contextualQuery(playerQuery(client, videoId, identity.visitor, script?.let { signatureTimestamp(it.source) }), identity)
         try {
+            val requestScript = if (client == PlayerClient.VISIONOS || client == PlayerClient.ANDROID_VR) script else activeScript
+            var query = contextualQuery(playerQuery(client, videoId, identity.visitor,
+                requestScript?.let { signatureTimestamp(it.source) }), identity)
             val pot = token(client, TokenPurpose.PLAYER, identity)
             if (pot != null) {
                 val root = jsonObject(query.body)!!
@@ -47,12 +66,15 @@ fun loadPlayer(videoId: String, context: RequestContext, http: HttpClient = JvmH
             }
             val response = requestObject(query, http)
             if (!response.ok) {
-                lastError = response.error
-                return@run PlayerAnswer(true, null, null, false, false, false, false)
+                return@run rejected(response.error ?: RequestError(RequestFailure.PARSE, "empty_player_response"))
             }
             val receivedAt = now()
             var fetched = playerAnswer(response.value!!.encode())
-            fetched = openBoundFormats(fetched, script, solver)
+            status = fetched.status?.takeIf { it.matches(Regex("[A-Z_]{1,48}")) }
+            if (isBotCheck(fetched.reason)) {
+                return@run rejected(RequestError(RequestFailure.VERIFICATION, "playability_bot_check"))
+            }
+            fetched = openBoundFormats(fetched, script, solver) { activeScript }
             val mediaPot = token(client, TokenPurpose.MEDIA, identity)
             if (mediaPot != null) {
                 fun attach(formats: List<PlayerFormat>) = formats.map { it.copy(url = it.url?.let { url -> urlWithParameter(url, "pot", mediaPot) }) }
@@ -66,30 +88,33 @@ fun loadPlayer(videoId: String, context: RequestContext, http: HttpClient = JvmH
                 it.copy(url = it.url?.let { url -> urlWithParameter(url, "pot", subtitlePot) })
             })
             val deadlines = listOfNotNull(tokenDeadline, fetched.expiresInSeconds?.let { receivedAt + it.coerceIn(0, 31536000) * 1000 })
-            fetched = fetched.copy(expiresAtMs = if (deadlines.isEmpty()) null else deadlines.min())
+            fetched = fetched.copy(expiresAtMs = if (deadlines.isEmpty()) null else deadlines.min(),
+                mediaAvailableAtMs = if (fetched.mediaWaitMs > 0) receivedAt + fetched.mediaWaitMs else 0)
             if (fetched.expiresAtMs?.let { it <= now() } == true) {
-                lastError = RequestError(RequestFailure.UNSUPPORTED, "expired_player_source")
-                return@run PlayerAnswer(false, null, null, false, false, false, fetched.live)
+                return@run rejected(RequestError(RequestFailure.UNSUPPORTED, "expired_player_source"),
+                    PlayerAnswer(false, null, null, false, false, false, fetched.live))
             }
             answer = fetched
             if (!selectPlayback(fetched, preference).hasSource()) {
                 val status = fetched.status?.takeIf { it != "OK" && it.matches(Regex("[A-Z_]{1,48}")) }
-                lastError = RequestError(RequestFailure.UNSUPPORTED,
-                    status?.let { "playability_${it.toLowerCase(java.util.Locale.ROOT)}" } ?: "no_matching_format")
-                return@run fetched.copy(hasDirectUrl = false, hasHls = false, hasMuxed = false,
-                    hlsUrl = null, dashUrl = null, sabrUrl = null)
+                return@run rejected(RequestError(RequestFailure.UNSUPPORTED,
+                    status?.let { "playability_${it.lowercase(Locale.ROOT)}" } ?: "no_matching_format"),
+                    fetched.copy(hasDirectUrl = false, hasHls = false, hasMuxed = false,
+                        hlsUrl = null, dashUrl = null, sabrUrl = null))
             }
-            lastError = RequestError(RequestFailure.UNSUPPORTED, fetched.status ?: "no_playable_source")
             fetched
         } catch (_: InterruptedException) {
             Thread.currentThread().interrupt()
-            lastError = RequestError(RequestFailure.CANCELLED, "cancelled")
-            PlayerAnswer(true, null, null, false, false, false, false)
-        } catch (_: Exception) {
-            lastError = RequestError(RequestFailure.UNSUPPORTED, "challenge_failed")
-            PlayerAnswer(true, null, null, false, false, false, false)
+            rejected(RequestError(RequestFailure.CANCELLED, "cancelled"))
+        } catch (failure: PlayerScriptException) {
+            rejected(failure.error)
+        } catch (error: Exception) {
+            rejected(RequestError(RequestFailure.UNSUPPORTED, "challenge_failed", cause = error.javaClass.simpleName))
+        } finally {
+            onAttempt?.invoke(PlayerLoadAttempt(client, status, failure, (now() - started).coerceAtLeast(0)))
         }
     }
-    if (result.client == null) return ReadResult(error = lastError ?: RequestError(RequestFailure.UNSUPPORTED, "no_playable_source"))
+    if (result.client == null) return ReadResult(error = lastError?.takeIf { it.kind == RequestFailure.CANCELLED }
+        ?: verification ?: lastError ?: RequestError(RequestFailure.UNSUPPORTED, "no_playable_source"))
     return ReadResult(PlayerLoad(result.form, result.client, answer))
 }
