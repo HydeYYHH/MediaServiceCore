@@ -76,7 +76,11 @@ fun watchPage(body: String, videoId: String? = null): WatchPage {
     return WatchPage(details?.text("videoId") ?: metadata?.text("videoId") ?: videoId,
         primary?.display("title") ?: details?.text("title"),
         secondary?.display("description") ?: secondary?.obj("attributedDescription")?.text("content") ?: details?.text("shortDescription"),
-        owner?.display("title") ?: metadata?.display("byline") ?: details?.text("author"),
+        // A TV transport button may say "Channel" and open a panel; it is a label,
+        // not an owner. Music pages publish their artist in the metadata byline.
+        owner?.display("title")?.takeIf {
+            owner.path("navigationEndpoint", "showEngagementPanelEndpoint") == null
+        } ?: metadata?.display("byline") ?: details?.text("author"),
         owner?.path("navigationEndpoint", "browseEndpoint")?.text("browseId")
             ?: owner?.objects("browseEndpoint")?.firstNotNullOfOrNull { it.text("browseId")?.takeIf { id -> id.startsWith("UC") } }
             ?: owner?.path("subscribeButton", "subscribeButtonRenderer")?.text("channelId") ?: details?.text("channelId"), chapters,

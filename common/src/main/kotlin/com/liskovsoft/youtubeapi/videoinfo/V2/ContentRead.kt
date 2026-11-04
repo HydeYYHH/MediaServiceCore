@@ -65,8 +65,15 @@ private fun contentItem(type: String, item: Json.Obj): MediaItem? {
     val rowParts = (rows + entityRows).map { row ->
         ((row as? Json.Obj)?.fields?.get("metadataParts") as? Json.Arr)?.items.orEmpty().mapNotNull { it as? Json.Obj }
     }
-    val hasAuthor = metadata?.objects("decoratedAvatarViewModel")?.isNotEmpty() == true ||
-        rowParts.firstOrNull()?.any { part -> part.objects("browseEndpoint").any { it.text("browseId")?.startsWith("UC") == true } } == true
+    // TV music/video lockups also carry an unlinked author row, without an avatar.
+    // Keep stats-only lockups from turning a view count or publication age into an author.
+    val firstRow = rowParts.firstOrNull().orEmpty()
+    val firstText = firstRow.singleOrNull()?.display("text")
+    val plainAuthor = type == "lockupViewModel" && kind == "video" && !firstText.isNullOrBlank() &&
+        !Regex("(?i)(\\bviews?\\b|\\bago\\b|\\bstreamed\\b|\\bpremiered\\b|^song$|^album$|^episode$)").containsMatchIn(firstText) &&
+        firstRow.single().objects("leadingIcon").isEmpty()
+    val hasAuthor = metadata?.objects("decoratedAvatarViewModel")?.isNotEmpty() == true || plainAuthor ||
+        firstRow.any { part -> part.objects("browseEndpoint").any { it.text("browseId")?.startsWith("UC") == true } }
     val author = rowParts.firstOrNull()?.firstOrNull()?.display("text").takeIf { hasAuthor }
     val stats = if (hasAuthor) rowParts.drop(1).flatten() else rowParts.flatten()
     val views = stats.firstOrNull { part ->
