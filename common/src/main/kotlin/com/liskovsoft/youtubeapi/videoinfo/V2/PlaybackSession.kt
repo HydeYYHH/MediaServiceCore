@@ -10,12 +10,12 @@ data class PlayerSource @JvmOverloads constructor(val videoId: String, val clien
 class PlaybackSession @JvmOverloads constructor(private val http: HttpClient = JvmHttpClient(), private val script: PlayerScript? = null,
     private val solver: PlayerSolver? = null, private val tokens: PlayerTokenProvider? = null,
     private val now: () -> Long = System::currentTimeMillis, private val scripts: PlayerScriptProvider? = null,
-    private val onAttempt: ((PlayerLoadAttempt) -> Unit)? = null) {
+    private val onAttempt: ((PlayerLoadAttempt) -> Unit)? = null,
+    private val queues: PlayerClientQueues = PlayerClientQueues()) {
     private val lock = PlaybackLock()
-    private val queues = PlayerClientQueues()
     private val sequence = AtomicLong()
     private val sessionId = UUID.randomUUID().toString()
-    private val results = TimedCache<String, PlaybackLoad>(64, now)
+    private val results = PlaybackResults(64, now)
     private val sources = LinkedHashMap<Long, PlayerSource>(16, 0.75f, true)
     private val sourceRoots = HashMap<Long, Set<String>>()
     private val scopedSolver = solver?.let { CachedPlayerSolver(it, MemoryPlaybackCache(now = now)) }
@@ -61,10 +61,12 @@ private fun sourceUrls(answer: PlayerAnswer?, playback: Playback): Set<String> {
         val updated = remember(known.copy(urls = selected + children))
         return ReadResult(load.copy(source = updated))
     }
-    fun load(videoId: String, context: RequestContext = RequestContext(), preference: PlaybackPreference = PlaybackPreference(),
+    @JvmOverloads fun load(videoId: String, context: RequestContext = RequestContext(), preference: PlaybackPreference = PlaybackPreference(),
         fresh: Boolean = false, excluded: Set<PlayerClient> = emptySet(),
-        includeMuxedFloor: Boolean = true, deferred: Set<PlayerClient> = emptySet()): ReadResult<PlaybackLoad> {
+        includeMuxedFloor: Boolean = true, deferred: Set<PlayerClient> = emptySet(),
+        cacheNamespace: String = ""): ReadResult<PlaybackLoad> {
         if (!videoIdAccepted(videoId)) return ReadResult(error = RequestError(RequestFailure.INVALID, "invalid_video_id"))
+        val scope = listOf(videoId, context.scope(), cacheNamespace).joinToString("\u0001")
         val revision = scripts?.cacheKey(videoId, context)
         val resolved by lazy {
             try { scripts?.script(videoId, context, fresh) } catch (error: InterruptedException) {
@@ -83,21 +85,27 @@ private fun sourceUrls(answer: PlayerAnswer?, playback: Playback): Set<String> {
         }
         val eagerScript = try { if (revision == null) activeScript() else script }
         catch (_: InterruptedException) {
+            if (fresh) results.ticket(scope, refresh = true)
             Thread.currentThread().interrupt()
             return ReadResult(error = RequestError(RequestFailure.CANCELLED, "cancelled"))
         } catch (failure: PlayerScriptException) {
+            if (fresh) results.ticket(scope, refresh = true)
             return ReadResult(error = failure.error)
         }
-        if (fresh) scopedTokens?.clear()
-        val generation = results.generation()
-        val key = listOf(videoId, context.scope(), preference.copy(mimeTypes = preference.mimeTypes.toSortedSet(),
+        val demand = listOf(preference.copy(mimeTypes = preference.mimeTypes.toSortedSet(),
             videoCodecs = preference.videoCodecs.toSortedSet(), audioCodecs = preference.audioCodecs.toSortedSet()).toString(),
             revision, eagerScript?.url, eagerScript?.source?.let(::textDigest),
-            fresh.toString(), excluded.sortedBy { it.name }.toString(), includeMuxedFloor.toString(),
-            deferred.sortedBy { it.name }.toString(), generation.toString()).joinToString("\u0001")
-        if (!fresh) results.get(key)?.let { return ReadResult(it) }
-        val loaded = try { lock.load(key) compute@{
-            if (!fresh) results.get(key)?.let { return@compute it }
+            excluded.sortedBy { it.name }.toString(), deferred.sortedBy { it.name }.toString()).joinToString("\u0001")
+        val key = "$demand\u0001$includeMuxedFloor"
+        val ticket = if (fresh) null else results.ticket(scope)
+        if (ticket != null) results.get(ticket, key)?.let { return ReadResult(it) }
+        // Refresh callers coalesce before advancing the scoped fence; ordinary loads
+        // started before it cannot publish stale URLs or attract subsequent callers.
+        val flight = if (fresh) "fresh\u0001${results.generation()}" else "normal\u0001${ticket!!.version}"
+        val loaded = try { lock.load("$scope\u0001$key\u0001$flight") compute@{
+            val current = ticket ?: results.ticket(scope, refresh = true)
+            if (fresh) scopedTokens?.clear()
+            else results.get(current, key)?.let { return@compute it }
             val result = loadPlayer(videoId, context, http, eagerScript, scopedSolver, scopedTokens, queues,
                 excluded, now, preference, onAttempt, deferred, ::activeScript)
             val loaded = if (!result.ok) PlaybackLoad(PlaybackForm.VOD, null, Playback(null, null, null), error = result.error)
@@ -115,7 +123,10 @@ private fun sourceUrls(answer: PlayerAnswer?, playback: Playback): Set<String> {
             }
             if (loaded.error == null) {
                 val lifetime = loaded.answer?.expiresAtMs?.minus(now()) ?: 45000L
-                results.put(key, loaded, minOf(45000L, lifetime), generation)
+                val ttl = minOf(45000L, lifetime)
+                results.put(current, key, loaded, ttl)
+                // A complete catalog also satisfies a startup request that omits the floor.
+                if (includeMuxedFloor) results.put(current, "$demand\u0001false", loaded, ttl)
             }
             loaded
         }} catch (_: InterruptedException) {
@@ -142,9 +153,9 @@ private fun sourceUrls(answer: PlayerAnswer?, playback: Playback): Set<String> {
             throw failure
         } catch (_: Exception) { null } ?: return answer to null
         if (!response.ok) return answer to null
-        val reelRoot = jsonObject(response.value?.encode() ?: return answer to null)?.obj("playerResponse")
+        val reelRoot = response.value?.obj("playerResponse")
             ?: return answer to null
-        var floor = try { playerAnswer(reelRoot.encode()) } catch (_: Exception) { return answer to null }
+        var floor = try { playerAnswer(reelRoot) } catch (_: Exception) { return answer to null }
         if (floor.details?.videoId != videoId) return answer to null
         floor = try { openBoundFormats(floor, activeScript, scopedSolver, scriptLoader) }
         catch (failure: InterruptedException) { throw failure }

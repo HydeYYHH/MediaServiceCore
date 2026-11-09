@@ -31,9 +31,16 @@ internal fun commentEntityRenderers(root: Json.Obj, section: Json.Obj): List<Jso
             "publishedTimeText" to textNode(properties.text("publishedTime")),
             "voteCount" to textNode((if (liked) toolbar?.scalar("likeCountLiked") else null)
                 ?: toolbar?.scalar("likeCountNotliked") ?: toolbar?.scalar("likeCountA11y")),
-            "replyCount" to textNode(toolbar?.scalar("replyCount")), "isLiked" to Json.Bool(liked),
+            "replyCount" to textNode(toolbar?.scalar("replyCount")),
             "isCreator" to Json.Bool(author?.bool("isCreator") == true), "isVerified" to Json.Bool(author?.bool("isVerified") == true),
             "isPinned" to Json.Bool(view?.fields?.containsKey("pinnedText") == true))
+        val viewerRating = when (state?.text("likeState")) {
+            "TOOLBAR_LIKE_STATE_LIKED" -> "LIKE"
+            "TOOLBAR_LIKE_STATE_DISLIKED" -> "DISLIKE"
+            "TOOLBAR_LIKE_STATE_INDIFFERENT" -> "INDIFFERENT"
+            else -> null
+        }
+        viewerRating?.let { fields["voteStatus"] = Json.Str(it) }
         author?.text("channelId")?.let { fields["authorEndpoint"] = Json.Obj(mapOf("browseEndpoint" to Json.Obj(mapOf("browseId" to Json.Str(it))))) }
         state?.text("heartState")?.let { fields["isHearted"] = Json.Bool(it == "TOOLBAR_HEART_STATE_HEARTED") }
         author?.text("avatarThumbnailUrl")?.let { fields["authorThumbnail"] = Json.Obj(mapOf("thumbnails" to Json.Arr(listOf(Json.Obj(mapOf("url" to Json.Str(it))))))) }
@@ -68,17 +75,24 @@ private fun commentViewKey(node: Json.Obj?): String? = node?.text("commentKey")
 private fun normalizedToolbar(surface: Json.Obj, state: Json.Obj?): Json.Obj {
     val buttons = LinkedHashMap<String, Json>()
     for (name in listOf("likeButton", "dislikeButton")) {
-        val value = surface.obj(name) ?: continue
+        val value = surface.obj(name) ?: Json.Obj(emptyMap())
         val button = value.obj("toggleButtonRenderer") ?: value
         fun endpoint(toggled: Boolean): Json.Obj? {
+            val command = when (name) {
+                "likeButton" -> if (toggled) "unlikeCommand" else "likeCommand"
+                else -> if (toggled) "undislikeCommand" else "dislikeCommand"
+            }
             val source = button.obj(if (toggled) "toggledServiceEndpoint" else "defaultServiceEndpoint")
                 ?: if (!toggled) button.obj("innertubeCommand") ?: button.obj("onTap") else null
-            return source?.objects("performCommentActionEndpoint")?.firstOrNull()?.let { Json.Obj(mapOf("performCommentActionEndpoint" to it)) }
+            return (source ?: surface.obj(command))?.objects("performCommentActionEndpoint")?.firstOrNull()
+                ?.let { Json.Obj(mapOf("performCommentActionEndpoint" to it)) }
         }
         val fields = LinkedHashMap<String, Json>()
         endpoint(false)?.let { fields["defaultServiceEndpoint"] = it }
         endpoint(true)?.let { fields["toggledServiceEndpoint"] = it }
-        fields["isToggled"] = Json.Bool(state?.text("likeState") == if (name == "likeButton") "TOOLBAR_LIKE_STATE_LIKED" else "TOOLBAR_LIKE_STATE_DISLIKED")
+        state?.text("likeState")?.takeIf { it in setOf("TOOLBAR_LIKE_STATE_LIKED", "TOOLBAR_LIKE_STATE_DISLIKED", "TOOLBAR_LIKE_STATE_INDIFFERENT") }?.let {
+            fields["isToggled"] = Json.Bool(it == if (name == "likeButton") "TOOLBAR_LIKE_STATE_LIKED" else "TOOLBAR_LIKE_STATE_DISLIKED")
+        }
         buttons[name] = Json.Obj(mapOf("toggleButtonRenderer" to Json.Obj(fields)))
     }
     return Json.Obj(mapOf("commentActionButtonsRenderer" to Json.Obj(buttons)))

@@ -6,7 +6,8 @@ enum class PlayerClient {
     WEB_EMBED,
     WEB_SAFARI,
     TV,
-    ANDROID_VR
+    ANDROID_VR,
+    TV_TIZEN
 }
 
 enum class SignIn { SIGNED_OUT, SIGNED_IN }
@@ -17,7 +18,7 @@ data class ClientQueueKey(val signIn: SignIn, val form: PlaybackForm)
 
 enum class ClientOutcome { PLAYED, CONTENT, SOFT }
 
-class PlayerClientQueues {
+class PlayerClientQueues(private val vodFirst: PlayerClient? = null) {
     private val orders = HashMap<ClientQueueKey, MutableList<PlayerClient>>()
 
     fun order(key: ClientQueueKey): List<PlayerClient> = synchronized(orders) {
@@ -41,7 +42,12 @@ class PlayerClientQueues {
     }
 
     private fun queue(key: ClientQueueKey): MutableList<PlayerClient> =
-        orders.getOrPut(key) { defaultOrder(key).toMutableList() }
+        orders.getOrPut(key) {
+            val defaults = defaultOrder(key)
+            if (key.form == PlaybackForm.VOD && vodFirst != null && vodFirst in defaults)
+                (listOf(vodFirst) + defaults.filter { it != vodFirst }).toMutableList()
+            else defaults.toMutableList()
+        }
 
     companion object {
         fun defaultOrder(key: ClientQueueKey): List<PlayerClient> = when (key.form) {
@@ -52,6 +58,7 @@ class PlayerClientQueues {
                 SignIn.SIGNED_IN -> listOf(
                     PlayerClient.WEB_SAFARI,
                     PlayerClient.VISIONOS,
+                    PlayerClient.TV_TIZEN,
                     PlayerClient.WEB,
                     PlayerClient.WEB_EMBED,
                     PlayerClient.TV,

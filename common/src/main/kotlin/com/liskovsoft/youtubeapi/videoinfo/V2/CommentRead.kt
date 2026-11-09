@@ -30,31 +30,41 @@ internal fun commentSortOptions(root: Json.Obj): List<CommentSort> =
         CommentSort(it.text("title"), key, it.bool("selected") == true)
     }
 internal fun commentNextKey(section: Json.Obj): String? =
-    section.arr("contents").mapNotNull { (it as? Json.Obj)?.obj("continuationItemRenderer")?.let(::pageKey) }.firstOrNull()
-fun loadComments(videoId: String, context: RequestContext, continuation: String? = null, http: HttpClient = JvmHttpClient()): ReadResult<CommentPage> {
+    section.arr("contents").mapNotNull { value ->
+        val item = (value as? Json.Obj)?.obj("continuationItemRenderer") ?: return@mapNotNull null
+        pageKey(item) ?: item.path("button", "buttonRenderer", "command", "continuationCommand")
+            ?.text("token")?.takeIf(String::isNotBlank)
+    }.firstOrNull()
+/** [opened] may reuse the initial /next response read for the same video and request context. */
+@JvmOverloads
+fun loadComments(videoId: String, context: RequestContext, continuation: String? = null, http: HttpClient = JvmHttpClient(),
+    opened: WatchPage? = null): ReadResult<CommentPage> {
     if (!videoIdAccepted(videoId)) return ReadResult(error = RequestError(RequestFailure.INVALID, "invalid_video_id"))
+    if (opened != null && opened.videoId != videoId)
+        return ReadResult(error = RequestError(RequestFailure.INVALID, "comment_video_mismatch"))
     var key = continuation
-    var opened: Json.Obj? = null
+    var opening: WatchPage? = null
     if (key == null) {
-        val first = requestObject(youtubeQuery(YOUTUBE_API + "next", payload("videoId" to videoId), context), http)
-        if (!first.ok) return ReadResult(error = first.error)
-        opened = first.value!!
-        key = commentKey(opened.encode())
-        if (key == null) return ReadResult(CommentPage(emptyList(), null, null, commentSortOptions(opened),
-            total = watchPage(opened.encode(), videoId).commentCount,
-            turnedOff = opened.objects("messageRenderer").any { it.display("text")?.contains("Comments are turned off", true) == true }))
+        opening = opened ?: run {
+            val first = loadWatch(videoId, context, http = http)
+            if (!first.ok) return ReadResult(error = first.error)
+            first.value!!
+        }
+        key = opening.commentsKey
+        if (key == null) return ReadResult(CommentPage(emptyList(), null, null, opening.commentSortOptions,
+            total = opening.commentCount, turnedOff = opening.commentsTurnedOff))
     }
-    val response = requestObject(youtubeQuery(YOUTUBE_API + "next", payload("continuation" to key), context), http)
+    val response = requestObject(youtubeQuery(YOUTUBE_API + "next", payload("continuation" to key), context).withCompactResponse(), http)
     if (!response.ok) return ReadResult(error = response.error)
-    var page = commentPage(response.value!!.encode())
-    if (opened != null) page = page.copy(
-        createKey = page.createKey ?: commentPage(opened.encode()).createKey,
-        sortOptions = page.sortOptions.ifEmpty { commentSortOptions(opened) },
-        total = watchPage(opened.encode(), videoId).commentCount)
+    var page = commentPage(response.value!!)
+    if (opening != null) page = page.copy(
+        createKey = page.createKey ?: opening.commentCreateKey,
+        sortOptions = page.sortOptions.ifEmpty { opening.commentSortOptions },
+        total = opening.commentCount)
     return ReadResult(page)
 }
 fun loadCommentReplies(replyKey: String, context: RequestContext = RequestContext(), http: HttpClient = JvmHttpClient()): ReadResult<CommentPage> {
     if (replyKey.isBlank()) return ReadResult(error = RequestError(RequestFailure.INVALID, "missing_reply_key"))
-    val response = requestObject(youtubeQuery(YOUTUBE_API + "next", payload("continuation" to replyKey), context), http)
-    return if (response.ok) ReadResult(commentPage(response.value!!.encode())) else ReadResult(error = response.error)
+    val response = requestObject(youtubeQuery(YOUTUBE_API + "next", payload("continuation" to replyKey), context).withCompactResponse(), http)
+    return if (response.ok) ReadResult(commentPage(response.value!!)) else ReadResult(error = response.error)
 }

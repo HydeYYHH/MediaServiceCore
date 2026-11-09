@@ -16,10 +16,26 @@ fun loadAccounts(context: RequestContext, http: HttpClient = JvmHttpClient()): R
         "\"accountReadMask\":{\"returnOwner\":true,\"returnBrandAccounts\":true,\"returnPersonaAccounts\":false}", context), http)
     return if (result.ok) ReadResult(readAccounts(result.value!!.encode())) else ReadResult(error = result.error)
 }
+
+/** The TV account endpoint exposes the same stable account identity for OAuth and cookies. */
+fun loadActiveAccount(context: RequestContext, http: HttpClient = JvmHttpClient()): ReadResult<Account> {
+    if (!context.signedIn) return ReadResult(error = RequestError(RequestFailure.AUTH, "sign_in_required"))
+    val query = contextualQuery(tvQuery(YOUTUBE_API + "account/accounts_list", "", context.visitor), context)
+    val result = requestObject(query, http)
+    if (!result.ok) return ReadResult(error = result.error)
+    val accounts = readAccounts(result.value!!.encode()).filter { !it.disabled }
+    val active = accounts.singleOrNull { it.selected } ?: accounts.singleOrNull()
+    return if (active != null) ReadResult(active)
+        else ReadResult(error = RequestError(RequestFailure.PARSE, "missing_active_account"))
+}
 class AccountSession(private var context: RequestContext = RequestContext()) {
     private var accounts = emptyList<Account>()
     @Synchronized fun snapshot() = context
     @Synchronized fun accounts(): List<Account> = accounts.toList()
+    /** Token rotation changes credentials, not the selected account or its generation. */
+    @Synchronized fun updateAccessToken(accessToken: String) {
+        context = context.copy(accessToken = accessToken)
+    }
     @Synchronized fun updateAccounts(items: List<Account>): Boolean {
         if (!context.signedIn) return false
         val selected = items.firstOrNull { it.id == context.accountId && !it.disabled }

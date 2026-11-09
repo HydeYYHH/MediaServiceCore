@@ -22,9 +22,16 @@ fun homeQuery(section: HomeSection = HomeSection.HOME, context: RequestContext =
 }
 fun loadHome(section: HomeSection = HomeSection.HOME, context: RequestContext = RequestContext(), continuation: String? = null,
     http: HttpClient = JvmHttpClient()): ReadResult<BrowsePage> {
-    val result = requestObject(homeQuery(section, context, continuation), http)
-    if (section == HomeSection.SHORTS && continuation == null && result.error?.status == 400)
-        return loadShortsDocument(context, http)
+    // Seedless reel sequence calls are rejected (400); use the working document
+    // directly. Sequence continuations still use their original API lane.
+    val document = if (section == HomeSection.SHORTS && continuation == null) {
+        loadShortsDocument(context, http).also {
+            if (it.ok || it.error?.kind != RequestFailure.PARSE) return it
+        }
+    } else null
+    val query = homeQuery(section, context, continuation)
+    val result = requestObject(if (section == HomeSection.SHORTS) query else query.withCompactResponse(), http)
+    if (!result.ok && document != null) return document
     if (!result.ok) return ReadResult(error = result.error)
     return if (section == HomeSection.SHORTS) readShorts(result.value!!) else readBrowsePage(result.value!!)
 }

@@ -7,6 +7,29 @@ internal val contentRenderers = mapOf("videoRenderer" to "video", "gridVideoRend
     "playlistRenderer" to "playlist", "gridPlaylistRenderer" to "playlist", "compactPlaylistRenderer" to "playlist",
     "tileRenderer" to "tile", "lockupViewModel" to "lockup", "shortsLockupViewModel" to "short")
 
+// Modern cards expose localized display strings instead of viewCountText/publishedTimeText.
+// Compile these once per process, and keep the original server text when identifying a field.
+private val contentViewWords = Regex("(?iu)(\\bviews?\\b|\\bwatching\\b|次观看|次觀看|观看次数|觀看次數|次播放|回視聴|回再生|조회수|visualizaciones|vistas|visualizações|vues|aufrufe|просмотр|مشاهدة)")
+private val contentAgeWords = Regex("(?iu)(\\bago\\b|\\bstreamed\\b|\\bpremiered\\b|\\bpublished\\b|\\byesterday\\b|\\btoday\\b|(?:秒|分钟|分鐘|小时|小時|天|周|週|个月|個月|月|年|時間|日|週間|か月|분|시간|일|주|개월|년)\\s*(?:前|전)|\\bhace\\b|\\bvor\\b|\\bil y a\\b|\\bhá\\b|\\batrás\\b|\\bназад\\b|\\bfa\\b|قبل)")
+private val contentKindLabel = Regex("(?i)^(song|album|episode)$")
+private val contentDuration = Regex("[0-9]+(?::[0-5][0-9]){1,2}")
+
+private fun String.isContentViewCount() =
+    equals("No views", ignoreCase = true) || any(Char::isDigit) && contentViewWords.containsMatchIn(this)
+
+private fun String.isContentAge() = contentAgeWords.containsMatchIn(this)
+private fun Json.Obj.contentText(name: String) = display(name)?.takeIf(String::isNotBlank)
+
+private fun Json.Obj.isContentViews(): Boolean =
+    listOfNotNull(contentText("text"), text("accessibilityLabel"), obj("text")?.text("accessibilityLabel"))
+        .any { it.isContentViewCount() } || objects("leadingIcon").any {
+        it.text("iconType") == "PLAY_ARROW" || it.text("name")?.startsWith("PLAY_ARROW") == true
+    }
+
+private fun Json.Obj.isContentPublished(): Boolean =
+    listOfNotNull(contentText("text"), text("accessibilityLabel"), obj("text")?.text("accessibilityLabel"))
+        .any { it.isContentAge() }
+
 internal fun contentItems(root: Json): List<MediaItem> {
     val result = ArrayList<MediaItem>()
     fun visit(node: Json) {
@@ -21,7 +44,24 @@ internal fun contentItems(root: Json): List<MediaItem> {
         }
     }
     visit(root)
-    return result.distinctBy { it.kind to it.id }
+    val unique = linkedMapOf<Pair<String, String>, MediaItem>()
+    result.forEach { item ->
+        val key = item.kind to item.id
+        val first = unique[key]
+        // A later card may carry display fields absent from the first server shelf.
+        // Keep ordering and all commands/capabilities from the original card.
+        unique[key] = if (first == null) item else first.copy(
+            title = first.title?.takeIf(String::isNotBlank) ?: item.title,
+            author = first.author?.takeIf(String::isNotBlank) ?: item.author,
+            thumbnail = first.thumbnail?.takeIf(String::isNotBlank) ?: item.thumbnail,
+            duration = first.duration?.takeIf(String::isNotBlank) ?: item.duration,
+            channelId = first.channelId?.takeIf(String::isNotBlank) ?: item.channelId,
+            authorThumbnail = first.authorThumbnail?.takeIf(String::isNotBlank) ?: item.authorThumbnail,
+            viewCount = first.viewCount?.takeIf(String::isNotBlank) ?: item.viewCount,
+            published = first.published?.takeIf(String::isNotBlank) ?: item.published,
+        )
+    }
+    return unique.values.toList()
 }
 
 private fun contentItem(type: String, item: Json.Obj): MediaItem? {
@@ -70,52 +110,59 @@ private fun contentItem(type: String, item: Json.Obj): MediaItem? {
     val firstRow = rowParts.firstOrNull().orEmpty()
     val firstText = firstRow.singleOrNull()?.display("text")
     val plainAuthor = type == "lockupViewModel" && kind == "video" && !firstText.isNullOrBlank() &&
-        !Regex("(?i)(\\bviews?\\b|\\bago\\b|\\bstreamed\\b|\\bpremiered\\b|^song$|^album$|^episode$)").containsMatchIn(firstText) &&
+        !firstText.isContentViewCount() && !firstText.isContentAge() && !contentKindLabel.matches(firstText) &&
         firstRow.single().objects("leadingIcon").isEmpty()
-    val hasAuthor = metadata?.objects("decoratedAvatarViewModel")?.isNotEmpty() == true || plainAuthor ||
-        firstRow.any { part -> part.objects("browseEndpoint").any { it.text("browseId")?.startsWith("UC") == true } }
-    val author = rowParts.firstOrNull()?.firstOrNull()?.display("text").takeIf { hasAuthor }
-    val stats = if (hasAuthor) rowParts.drop(1).flatten() else rowParts.flatten()
-    val views = stats.firstOrNull { part ->
-        part.text("accessibilityLabel")?.contains("view", true) == true ||
-            part.path("text")?.text("accessibilityLabel")?.contains("view", true) == true ||
-            part.display("text")?.contains("view", true) == true ||
-            part.objects("leadingIcon").any { it.text("iconType") == "PLAY_ARROW" || it.text("name")?.startsWith("PLAY_ARROW") == true }
-    }?.display("text")
-    val published = stats.firstOrNull { part ->
-        part.display("text")?.let { it.contains("ago", true) || it.contains("Streamed", true) || it.contains("Premiered", true) } == true
-    }?.display("text")
+    val linkedAuthor = firstRow.firstOrNull { part ->
+        part.objects("browseEndpoint").any { it.text("browseId")?.startsWith("UC") == true }
+    }
+    val authorPart = linkedAuthor ?: firstRow.firstOrNull()?.takeIf {
+        (metadata?.objects("avatarViewModel")?.isNotEmpty() == true || plainAuthor) &&
+            !it.isContentViews() && !it.isContentPublished()
+    }
+    val author = authorPart?.contentText("text")
+    // Author and stats can share a row; dropping the entire row silently loses fields.
+    val stats = rowParts.flatten().filterNot { it === authorPart }
+    val views = stats.firstOrNull { it.isContentViews() }?.contentText("text")
+    val published = stats.firstOrNull { it.isContentPublished() }?.contentText("text")
     val image = item.obj("thumbnail")?.obj("thumbnailViewModel")
         ?: item.path("contentImage", "thumbnailViewModel")
         ?: item.path("contentImage", "collectionThumbnailViewModel", "primaryThumbnail", "thumbnailViewModel")
-    val badge = item.objects("thumbnailBadgeViewModel").firstOrNull()
+    val badges = image?.objects("thumbnailBadgeViewModel").orEmpty().ifEmpty { item.objects("thumbnailBadgeViewModel") }
+    val timeOverlays = item.objects("thumbnailOverlayTimeStatusRenderer")
+    val duration = badges.firstNotNullOfOrNull { it.text("text")?.takeIf(contentDuration::matches) }
+        ?: timeOverlays.firstNotNullOfOrNull { overlay ->
+            overlay.contentText("text")?.takeIf { contentDuration.matches(it) || overlay.text("style") == "LIVE" }
+        }
+    val secondaryText = item.obj("overlayMetadata")?.contentText("secondaryText")
     val progress = item.objects("thumbnailOverlayResumePlaybackRenderer").firstOrNull()?.int("percentDurationWatched")
         ?: item.objects("thumbnailOverlayProgressBarViewModel").firstOrNull()?.int("startPercent")
-    return MediaItem(kind, id, item.display("title") ?: item.display("headline") ?: metadata?.display("title")
-        ?: item.obj("overlayMetadata")?.display("primaryText") ?: carousel?.display("title"),
-        item.display("ownerText") ?: item.display("shortBylineText") ?: item.display("longBylineText")
-            ?: item.obj("overlayMetadata")?.display("secondaryText") ?: author
-            ?: tileLines.firstOrNull()?.firstOrNull()?.takeUnless { it.contains("ago", true) || it.contains("view", true) } ?: carouselAuthor,
+    return MediaItem(kind, id, item.contentText("title") ?: item.contentText("headline") ?: metadata?.contentText("title")
+        ?: item.obj("overlayMetadata")?.contentText("primaryText") ?: carousel?.contentText("title"),
+        item.contentText("ownerText") ?: item.contentText("shortBylineText") ?: item.contentText("longBylineText")
+            ?: secondaryText?.takeUnless { it.isContentViewCount() || it.isContentAge() } ?: author
+            ?: tileLines.firstOrNull()?.firstOrNull()?.takeUnless { it.isContentAge() || it.isContentViewCount() } ?: carouselAuthor,
         item.thumbnail("thumbnail") ?: item.path("header", "tileHeaderRenderer")?.thumbnail("thumbnail") ?: image?.thumbnail("image")
             ?: if (kind == "short") "https://i.ytimg.com/vi/$id/hqdefault.jpg" else null,
-        item.display("lengthText") ?: badge?.text("text")
-            ?: item.objects("thumbnailOverlayTimeStatusRenderer").firstOrNull()?.display("text"),
+        item.contentText("lengthText") ?: duration,
         item.text("channelId") ?: item.objects("browseEndpoint").mapNotNull { it.text("browseId") }.firstOrNull { it.startsWith("UC") },
         item.text("playlistId") ?: watch?.text("playlistId"), browse?.text("params"),
         actionEndpoint(command), pageActions(item), watch?.long("startTimeSeconds"), progress?.coerceIn(0, 100),
-        badge?.text("badgeStyle")?.contains("LIVE") == true || item.objects("thumbnailOverlayTimeStatusRenderer").any { it.text("style") == "LIVE" },
+        badges.any { it.text("badgeStyle")?.contains("LIVE") == true } || timeOverlays.any { it.text("style") == "LIVE" },
         watch?.text("playerParams"),
         item.thumbnail("channelThumbnail")
-            ?: item.objects("channelThumbnailWithLinkRenderer").firstOrNull()?.thumbnail("thumbnail")
-            ?: item.objects("decoratedAvatarViewModel").firstOrNull()?.path("avatar", "avatarViewModel")?.thumbnail("image")
+            ?: item.objects("channelThumbnailWithLinkRenderer").firstNotNullOfOrNull { it.thumbnail("thumbnail") }
+            ?: metadata?.objects("avatarViewModel")?.firstNotNullOfOrNull { it.thumbnail("image") }
+            ?: item.objects("decoratedAvatarViewModel").firstNotNullOfOrNull { it.path("avatar", "avatarViewModel")?.thumbnail("image") }
             ?: bylines.firstOrNull()?.firstNotNullOfOrNull { it.thumbnail("thumbnail") },
-        item.display("viewCountText") ?: item.display("shortViewCountText") ?: views ?: tileLines.flatten().firstOrNull { it.contains("view", true) }
-            ?: carouselStats.firstNotNullOfOrNull { it.display("text")?.takeIf { text -> text.contains("view", true) } },
-        item.display("publishedTimeText") ?: published ?: tileLines.flatten().firstOrNull { it.contains("ago", true) || it.contains("Streamed", true) }
-            ?: carouselStats.firstNotNullOfOrNull { it.display("text")?.takeIf { text -> text.contains("ago", true) || text.contains("Streamed", true) } },
+        item.contentText("viewCountText") ?: item.contentText("shortViewCountText") ?: views
+            ?: secondaryText?.takeIf { it.isContentViewCount() } ?: tileLines.flatten().firstOrNull { it.isContentViewCount() }
+            ?: carouselStats.firstNotNullOfOrNull { it.contentText("text")?.takeIf { text -> text.isContentViewCount() } },
+        item.contentText("publishedTimeText") ?: published ?: secondaryText?.takeIf { it.isContentAge() }
+            ?: tileLines.flatten().firstOrNull { it.isContentAge() }
+            ?: carouselStats.firstNotNullOfOrNull { it.contentText("text")?.takeIf { text -> text.isContentAge() } },
         item.display("videoCountText") ?: item.display("videoCount")
             ?: item.objects("thumbnailOverlayBottomPanelRenderer").firstOrNull()?.display("text")
-            ?: badge?.text("text")?.takeIf { kind == "playlist" },
+            ?: badges.firstNotNullOfOrNull { it.text("text") }?.takeIf { kind == "playlist" },
         if (kind in setOf("video", "short")) item.path("onLongPressCommand", "showEngagementPanelEndpoint")?.let { panel ->
             val tag = panel.path("identifier")?.text("tag")
             val params = panel.path("globalConfiguration")?.text("params")

@@ -1,11 +1,11 @@
 package com.liskovsoft.youtubeapi.videoinfo.V2
 
 fun playerAnswer(body: String): PlayerAnswer {
-    val root = try {
-        JsonReader(body.trim()).parse() as? Json.Obj
-    } catch (failure: JsonEnd) {
-        null
-    } ?: return emptyAnswer()
+    return playerAnswer(jsonObject(body) ?: return emptyAnswer())
+}
+
+/** Reuses the HTTP reader's tree for formats, captions and audio metadata. */
+internal fun playerAnswer(root: Json.Obj): PlayerAnswer {
     val playability = root.obj("playabilityStatus")
     val streaming = root.obj("streamingData")
     val details = root.obj("videoDetails")
@@ -34,7 +34,7 @@ fun playerAnswer(body: String): PlayerAnswer {
         root.path("playerConfig", "mediaCommonConfig", "mediaUstreamerRequestConfig")?.text("videoPlaybackUstreamerConfig"),
         streaming?.long("expiresInSeconds"),
         readPlayerDetails(root),
-        translateCaptions(playerCaptions(body), captionLanguages(body), playerAudioTracks(body)),
+        translateCaptions(playerCaptions(root), captionLanguages(root), playerAudioTracks(root)),
         mediaWaitMs = mediaWaitMs(root)
     )
 }

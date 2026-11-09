@@ -12,7 +12,7 @@ class AccountToken(initial: AccessToken, private val client: SignInClient, priva
     private val now: () -> Long = System::currentTimeMillis) {
     private var current = initial
     @Synchronized fun token(): ReadResult<AccessToken> {
-        if (current.expiresAtMs > now() + 30000) return ReadResult(current)
+        if (current.accessToken.isNotBlank() && current.expiresAtMs > now() + 30000) return ReadResult(current)
         val refresh = current.refreshToken ?: return ReadResult(error = RequestError(RequestFailure.AUTH, "sign_in_required"))
         val result = refreshAccessToken(refresh, client, http, now())
         if (result.ok) current = result.value!!

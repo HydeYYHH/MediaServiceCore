@@ -31,7 +31,11 @@ data class Comment @JvmOverloads constructor(
     val disliked: Boolean,
     val parentId: String? = null, val replyCount: String? = null, val actions: List<PageAction> = emptyList(),
     val authorId: String? = null, val isCreator: Boolean = false, val isVerified: Boolean = false,
-    val isPinned: Boolean = false, val isHearted: Boolean? = null
+    val isPinned: Boolean = false, val isHearted: Boolean? = null,
+    /** TV lists expose rating controls only after opening this comment's detail continuation. */
+    val detailKey: String? = null,
+    /** Null when this response omitted the viewer's rating rather than reporting neutral. */
+    val viewerRating: String? = null
 )
 
 data class CommentPage(val comments: List<Comment>, val nextKey: String?, val createKey: String?, val sortOptions: List<CommentSort> = emptyList(),
@@ -52,25 +56,39 @@ fun commentQuery(videoId: String?, continuation: String?, visitor: String?): Pla
 
 fun commentKey(body: String): String? {
     val root = jsonObject(body) ?: return null
+    return commentKey(root)
+}
+
+internal fun commentKey(root: Json.Obj): String? {
     val panel = findPanel(root) ?: return null
     return pageKey(panel.obj("content") ?: panel)
 }
 
 fun commentPage(body: String): CommentPage {
     val root = jsonObject(body) ?: return emptyPage
+    return commentPage(root)
+}
+
+internal fun commentPage(root: Json.Obj): CommentPage {
     val section = commentSection(root)
     val comments = ArrayList<Comment>()
     run {
         for (renderer in commentRenderers(root, section)) {
             val runs = contentRuns(renderer.obj("contentText"))
+            val detailKey = renderer.obj("detailViewEndpoint")?.let(::pageKey)
+            val replyCount = renderer.display("replyCount") ?: renderer.display("repliesCount")
+                ?: renderer.path("replies", "commentRepliesRenderer", "viewReplies", "buttonRenderer")?.display("text")
+            val replyKey = renderer.obj("replies")?.let(::firstToken)
+                ?: detailKey?.takeIf { replyCount?.filter(Char::isDigit)?.toIntOrNull()?.let { it > 0 } == true }
+            val viewerRating = commentViewerRating(renderer)
             comments.add(Comment(
                 renderer.text("commentId")?.takeIf { it.isNotEmpty() },
                 displayText(renderer.obj("authorText")),
                 joinedText(runs),
                 displayText(renderer.obj("publishedTimeText")),
                 displayText(renderer.obj("voteCount")),
-                renderer.bool("isLiked") == true,
-                renderer.obj("replies")?.let { firstToken(it) },
+                viewerRating == "LIKE" || renderer.bool("isLiked") == true,
+                replyKey,
                 firstThumbnail(renderer.obj("authorThumbnail")),
                 buttonAction(renderer, "likeButton", "defaultServiceEndpoint"),
                 buttonAction(renderer, "likeButton", "toggledServiceEndpoint"),
@@ -79,18 +97,22 @@ fun commentPage(body: String): CommentPage {
                 runs,
                 buttonAction(renderer, "dislikeButton", "defaultServiceEndpoint"),
                 buttonAction(renderer, "dislikeButton", "toggledServiceEndpoint"),
-                disliked(renderer), renderer.text("parentCommentId"), renderer.display("replyCount"), pageActions(renderer),
+                viewerRating == "DISLIKE" || disliked(renderer), renderer.text("parentCommentId"), replyCount, pageActions(renderer),
                 renderer.path("authorEndpoint", "browseEndpoint")?.text("browseId"),
                 renderer.bool("isCreator") == true || renderer.bool("authorIsChannelOwner") == true,
                 renderer.bool("isVerified") == true,
                 renderer.bool("isPinned") == true || renderer.obj("pinnedCommentBadge") != null,
-                renderer.bool("isHearted") ?: if (renderer.path("actionButtons", "commentActionButtonsRenderer")?.obj("creatorHeart") != null) true else null
+                renderer.bool("isHearted") ?: if (renderer.path("actionButtons", "commentActionButtonsRenderer")?.obj("creatorHeart") != null) true else null,
+                detailKey, viewerRating
             ))
         }
     }
-    val createKey = headerCreateKey(section) ?: firstNamed(root, "createCommentParams")
+    val createKey = commentCreateKey(root, section)
     return CommentPage(comments, sectionContinuation(section) ?: commentNextKey(section), createKey, commentSortOptions(root))
 }
+
+internal fun commentCreateKey(root: Json.Obj, section: Json.Obj = commentSection(root)): String? =
+    headerCreateKey(section) ?: firstNamed(root, "createCommentParams")
 
 fun loadComments(
     videoId: String,
@@ -130,6 +152,8 @@ private fun findPanel(node: Json): Json.Obj? = when (node) {
 private fun firstToken(node: Json): String? = when (node) {
     is Json.Obj -> {
         val token = node.obj("continuationCommand")?.text("token")
+            ?: node.obj("nextContinuationData")?.text("continuation")
+            ?: node.obj("reloadContinuationData")?.text("continuation")
         if (token != null && token.isNotEmpty()) token
         else node.fields.values.asSequence().mapNotNull { firstToken(it) }.firstOrNull()
     }
@@ -264,6 +288,20 @@ private fun disliked(renderer: Json.Obj): Boolean {
         ?.obj("dislikeButton")
         ?.obj("toggleButtonRenderer")
         ?.bool("isToggled") == true
+}
+
+private fun commentViewerRating(renderer: Json.Obj): String? {
+    renderer.text("voteStatus")?.takeIf { it in setOf("LIKE", "DISLIKE", "INDIFFERENT") }?.let { return it }
+    val buttons = renderer.path("actionButtons", "commentActionButtonsRenderer")
+    val liked = renderer.bool("isLiked") ?: buttons?.path("likeButton", "toggleButtonRenderer")?.bool("isToggled")
+    val disliked = renderer.bool("isDisliked") ?: buttons?.path("dislikeButton", "toggleButtonRenderer")?.bool("isToggled")
+    return when {
+        liked == true && disliked == true -> null
+        liked == true -> "LIKE"
+        disliked == true -> "DISLIKE"
+        liked == false && disliked == false -> "INDIFFERENT"
+        else -> null
+    }
 }
 
 private fun deleteKey(node: Json): String? = when (node) {

@@ -2,8 +2,9 @@ package com.liskovsoft.youtubeapi.videoinfo.V2
 
 data class ChannelPage(val id: String?, val title: String?, val description: String?, val thumbnail: String?, val subscriberCount: String?, val page: BrowsePage,
     val handle: String? = null, val banner: String? = null, val videoCount: String? = null, val subscribed: Boolean? = null)
-fun channelPage(body: String, channelId: String? = null): ChannelPage {
-    val root = jsonObject(body)
+fun channelPage(body: String, channelId: String? = null): ChannelPage = channelPage(jsonObject(body), channelId)
+
+internal fun channelPage(root: Json.Obj?, channelId: String?): ChannelPage {
     val metadata = root?.objects("channelMetadataRenderer")?.firstOrNull()
     val header = root?.objects("c4TabbedHeaderRenderer")?.firstOrNull()
     val channelHeader = root?.objects("channelHeaderRenderer")?.firstOrNull()
@@ -13,7 +14,13 @@ fun channelPage(body: String, channelId: String? = null): ChannelPage {
         content.objects("text").mapNotNull { it.text("content") }
     }.orEmpty() + channelHeader?.obj("subtitle")?.objects("lineItemRenderer")
         .orEmpty().mapNotNull { it.display("text") }
-    val subscribed = channelHeader?.objects("subscribeButtonRenderer")?.firstOrNull()?.bool("subscribed")
+    val viewerSubscription = root?.let { current ->
+        (channelId ?: metadata?.text("externalId") ?: header?.text("channelId"))?.let {
+            viewerEntityState(current, ViewerEntityKind.SUBSCRIPTION, it)
+        }
+    }
+    val subscribed = if (viewerSubscription != null) viewerSubscription.state?.toBooleanStrictOrNull() else
+        channelHeader?.objects("subscribeButtonRenderer")?.firstOrNull()?.bool("subscribed")
         ?: root?.objects("subscribeButtonRenderer")?.firstOrNull()?.bool("subscribed")
         ?: root?.objects("toggleButtonRenderer")?.firstOrNull { toggle ->
             toggle.objects("subscribeEndpoint").isNotEmpty() || toggle.objects("unsubscribeEndpoint").isNotEmpty()
@@ -26,7 +33,7 @@ fun channelPage(body: String, channelId: String? = null): ChannelPage {
             ?: modern?.objects("descriptionPreviewViewModel")?.firstOrNull()?.display("description"),
         metadata?.thumbnail("avatar") ?: header?.thumbnail("avatar") ?: channelHeader?.thumbnail("avatar")
             ?: modern?.objects("avatarViewModel")?.firstOrNull()?.thumbnail("image"),
-        header?.display("subscriberCountText") ?: labels.firstOrNull { it.contains("subscriber", true) }, browsePage(body),
+        header?.display("subscriberCountText") ?: labels.firstOrNull { it.contains("subscriber", true) }, browsePage(root),
         header?.display("channelHandleText") ?: labels.firstOrNull { it.startsWith("@") },
         header?.thumbnail("banner") ?: channelHeader?.thumbnail("backgroundImage")
             ?: modern?.objects("imageBannerViewModel")?.firstOrNull()?.thumbnail("image"),
@@ -40,8 +47,8 @@ fun channelQuery(channelId: String, context: RequestContext = RequestContext(), 
 }
 fun loadChannel(channelId: String, context: RequestContext = RequestContext(), params: String? = null, continuation: String? = null,
     search: String? = null, http: HttpClient = JvmHttpClient()): ReadResult<ChannelPage> {
-    val result = requestObject(channelQuery(channelId, context, params, continuation, search), http)
-    return if (result.ok) ReadResult(channelPage(result.value!!.encode(), channelId)) else ReadResult(error = result.error)
+    val result = requestObject(channelQuery(channelId, context, params, continuation, search).withCompactResponse(), http)
+    return if (result.ok) ReadResult(channelPage(result.value!!, channelId)) else ReadResult(error = result.error)
 }
 
 /** `@handle` names resolve through the navigation endpoint; a plain channel id passes through. */

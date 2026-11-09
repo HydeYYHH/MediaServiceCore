@@ -23,7 +23,10 @@ class ChatReplay(private val key: String, private val context: RequestContext = 
 
     override fun close() { closed = true }
 
-    @Synchronized fun read(positionMs: Long): ReadResult<ChatPage> {
+    fun read(positionMs: Long): ReadResult<ChatPage> = read(positionMs, context, http)
+
+    /** Allows coroutine hosts to inject a fresh, cancellable transport for each page. */
+    @Synchronized fun read(positionMs: Long, context: RequestContext, http: HttpClient): ReadResult<ChatPage> {
         if (closed) return ReadResult(error = RequestError(RequestFailure.CANCELLED, "closed"))
         if (positionMs < 0) return ReadResult(error = RequestError(RequestFailure.INVALID, "invalid_chat_position"))
         if (positionMs < position) { next = key; seen.clear() }

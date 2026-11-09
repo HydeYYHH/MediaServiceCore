@@ -8,7 +8,10 @@ internal fun readPlayerAudio(format: Json.Obj): PlayerAudio? {
         audio.bool("audioIsDefault") == true, audio.bool("isAutoDubbed") == true)
 }
 fun playerAudioTracks(body: String): List<PlayerAudio> {
-    val streaming = jsonObject(body)?.obj("streamingData") ?: return emptyList()
+    return playerAudioTracks(jsonObject(body) ?: return emptyList())
+}
+internal fun playerAudioTracks(root: Json.Obj): List<PlayerAudio> {
+    val streaming = root.obj("streamingData") ?: return emptyList()
     return (streaming.arr("formats") + streaming.arr("adaptiveFormats"))
         .mapNotNull { (it as? Json.Obj)?.let(::readPlayerAudio) }.distinctBy { it.id to it.name }
 }

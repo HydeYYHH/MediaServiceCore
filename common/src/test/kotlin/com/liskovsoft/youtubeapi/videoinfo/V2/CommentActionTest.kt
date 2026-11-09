@@ -6,6 +6,73 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class CommentActionTest {
+    private fun ratingRenderer(liked: Boolean = false, count: String = "20") = """{"commentRenderer":{
+        "commentId":"parent","isLiked":$liked,"voteCount":{"simpleText":"$count"},
+        "actionButtons":{"commentActionButtonsRenderer":{
+          "likeButton":{"toggleButtonRenderer":{
+            "defaultServiceEndpoint":{"performCommentActionEndpoint":{"action":"LIKE"}},
+            "toggledServiceEndpoint":{"performCommentActionEndpoint":{"action":"UNLIKE"}}}},
+          "dislikeButton":{"toggleButtonRenderer":{
+            "defaultServiceEndpoint":{"performCommentActionEndpoint":{"action":"DISLIKE"}},
+            "toggledServiceEndpoint":{"performCommentActionEndpoint":{"action":"UNDISLIKE"}}}}
+        }}}}"""
+
+    @Test fun detailCapabilitiesCannotReinterpretAnExplicitRatingIntent() {
+        for (vote in CommentVote.values()) {
+            val writes = mutableListOf<String>()
+            val original = commentPage(ratingRenderer(liked = true, count = "11")).comments.single()
+                .copy(likeKey = null, unlikeKey = null, dislikeKey = null, undislikeKey = null, detailKey = "detail",
+                    deleteKey = "DELETE", replyCreateKey = "REPLY", replyKey = "replies")
+            val http = object : HttpClient {
+                override fun execute(request: HttpRequest): HttpReply {
+                    return if (request.body!!.contains("\"continuation\"")) HttpReply(200, ratingRenderer())
+                    else {
+                        writes += request.body!!
+                        HttpReply(200, """{"status":"STATUS_SUCCEEDED"}""")
+                    }
+                }
+            }
+            val result = rateComment(original, vote, RequestContext(accessToken = "token"), http).value!!.comment!!
+            assertTrue(writes.single().contains("\"actions\":[\"${vote.name}\"]"))
+            assertEquals(vote == CommentVote.LIKE, result.liked)
+            assertEquals(vote == CommentVote.DISLIKE, result.disliked)
+            // The fresh detail count and viewer state form one coherent fallback snapshot.
+            assertEquals(if (vote == CommentVote.LIKE) "21" else "20", result.likeCount)
+            assertEquals("UNLIKE", result.unlikeKey)
+            assertEquals("DELETE", result.deleteKey)
+            assertEquals("REPLY", result.replyCreateKey)
+            assertEquals("replies", result.replyKey)
+            assertEquals("detail", result.detailKey)
+        }
+    }
+
+    @Test fun legacyTogglesRetainTheirResolvedServerStateCompatibility() {
+        val original = commentPage(ratingRenderer(liked = true)).comments.single()
+            .copy(unlikeKey = null, detailKey = "detail")
+        val requests = mutableListOf<String>()
+        val http = object : HttpClient {
+            override fun execute(request: HttpRequest): HttpReply {
+                requests += request.body!!
+                return HttpReply(200, if (request.body!!.contains("\"continuation\"")) ratingRenderer()
+                    else """{"status":"STATUS_SUCCEEDED"}""")
+            }
+        }
+        assertTrue(likeComment(original, RequestContext(accessToken = "token"), http).value!!.comment!!.liked)
+        assertEquals(2, requests.size)
+        assertTrue(requests.last().contains("\"actions\":[\"LIKE\"]"))
+    }
+
+    @Test fun confirmedServerCountsTakePriorityOverTheLocalRatingDelta() {
+        val original = commentPage(ratingRenderer()).comments.single()
+        val http = object : HttpClient {
+            override fun execute(request: HttpRequest) = HttpReply(200,
+                """{"status":"STATUS_SUCCEEDED","commentRenderer":{"commentId":"parent","voteCount":{"simpleText":"923"}}}""")
+        }
+        val confirmed = rateComment(original, CommentVote.LIKE, RequestContext(accessToken = "token"), http).value!!.comment!!
+        assertTrue(confirmed.liked)
+        assertEquals("923", confirmed.likeCount)
+    }
+
     @Test fun videoCommentsBuildMissingCreationParametersAndRetainExplicitOnes() {
         val requests = mutableListOf<HttpRequest>()
         val http = object : HttpClient {

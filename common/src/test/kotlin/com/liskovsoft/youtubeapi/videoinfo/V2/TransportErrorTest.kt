@@ -10,6 +10,10 @@ import java.net.UnknownHostException
 import javax.net.ssl.SSLHandshakeException
 
 class TransportErrorTest {
+    @Test fun policyFailuresKeepTheirOriginalClassificationThroughRequestBody() {
+        val policy = RequestError(RequestFailure.PARSE, "response_too_large")
+        assertEquals(policy, readWith(RequestException(policy)))
+    }
     private fun readWith(error: Exception): RequestError? {
         val http = object : HttpClient {
             override fun execute(request: HttpRequest): HttpReply = throw error

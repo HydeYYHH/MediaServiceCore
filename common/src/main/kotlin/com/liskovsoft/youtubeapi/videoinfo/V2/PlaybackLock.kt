@@ -29,13 +29,17 @@ class PlaybackLock {
         if (!leader) return slot.await()
         try {
             val result = block()
+            // A waiter may immediately restart after an owner was cancelled. Retire
+            // this flight before waking it, so it cannot rejoin the completed failure.
+            synchronized(loads) { if (loads[videoId] === slot) loads.remove(videoId) }
             slot.succeed(result)
             return result
         } catch (failure: Throwable) {
+            synchronized(loads) { if (loads[videoId] === slot) loads.remove(videoId) }
             slot.fail(failure)
             throw failure
         } finally {
-            synchronized(loads) { loads.remove(videoId) }
+            synchronized(loads) { if (loads[videoId] === slot) loads.remove(videoId) }
         }
     }
 

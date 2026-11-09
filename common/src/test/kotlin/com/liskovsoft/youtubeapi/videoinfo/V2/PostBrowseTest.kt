@@ -42,6 +42,57 @@ class PostBrowseTest {
         assertNull(postContinuation(jsonObject("""{"contents":[]}""")!!))
     }
 
+    @Test fun buttonCommandsCarryTheNextPostsPage() {
+        val root = jsonObject("""{"continuationItemRenderer":{"button":{"buttonRenderer":{"command":{"continuationCommand":{"token":"more-posts"}}}}}}""")!!
+        assertEquals("more-posts", postContinuation(root))
+    }
+
+    @Test fun protocolRelativeAuthorPhotosAreUsableHttpsUrls() {
+        val root = jsonObject(body.replace("https://yt3/a.png", "//yt3/a.png"))!!
+        assertEquals("https://yt3/a.png", posts(root, "UCfallback").single().authorAvatar)
+    }
+
+    @Test fun postCommentsComeFromTheirOwnSectionInsteadOfAnUnrelatedContinuation() {
+        val html = """<script>window["ytInitialData"] = {"contents":[
+            {"continuationItemRenderer":{"continuationEndpoint":{"continuationCommand":{"token":"unrelated"}}}},
+            {"itemSectionRenderer":{"sectionIdentifier":"comment-item-section","contents":[
+                {"continuationItemRenderer":{"continuationEndpoint":{"continuationCommand":{"token":"post-comments"}}}}
+            ]}}
+        ]};</script>"""
+        val http = object : HttpClient { override fun execute(request: HttpRequest) = HttpReply(200, html) }
+        val page = loadPost("Ugkx_post", http).value!!
+        assertEquals("post-comments", page.commentsKey)
+        assertNull(page.nextKey)
+    }
+
+    @Test fun escapedInitialDataStillOpensThePost() {
+        val html = "var ytInitialData = '\\x7b\\x22backstagePostRenderer\\x22:{\\x22postId\\x22:\\x22Ugkx_post\\x22}}';"
+        val http = object : HttpClient { override fun execute(request: HttpRequest) = HttpReply(200, html) }
+        assertEquals("Ugkx_post", loadPost("Ugkx_post", http).value!!.posts.single().postId)
+    }
+
+    @Test fun publicPostsAndTheirCommentContinuationsKeepTheWebLaneAndLocale() {
+        val calls = ArrayList<HttpRequest>()
+        val http = object : HttpClient {
+            override fun execute(request: HttpRequest): HttpReply {
+                calls += request
+                return HttpReply(200, """{"commentsHeaderRenderer":{"countText":{"simpleText":"20 Comments"}},"contents":[]}""")
+            }
+        }
+        val context = RequestContext(accountId = "account", accessToken = "token", language = "zh-CN", generation = 7)
+        assertTrue(loadChannelPosts("UCchannel", context.anonymous(), params = "posts", http = http).ok)
+        assertEquals("20 Comments", loadPostComments("post-comments", context, http).value!!.total)
+        calls.forEach {
+            assertTrue(it.url.startsWith("https://www.youtube.com/youtubei/v1/browse?"))
+            assertTrue(it.body.contains("\"clientName\":\"WEB\""))
+            assertTrue(it.body.contains("\"hl\":\"zh-CN\""))
+            assertFalse(it.headers.containsKey("Authorization"))
+        }
+        assertTrue(calls.last().body.contains("\"continuation\":\"post-comments\""))
+        assertFalse(loadPostComments(" ", context, http).ok)
+        assertEquals(2, calls.size)
+    }
+
     @Test fun aMalformedPostIdFailsTypedBeforeAnyNetwork() {
         val failure = loadPost("../etc", http = object : HttpClient {
             override fun execute(request: HttpRequest): HttpReply = error("must not run")

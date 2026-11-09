@@ -30,9 +30,14 @@ data class WatchPage @JvmOverloads constructor(val videoId: String?, val title: 
     val queue: WatchQueue? = null, val resumeSeconds: Long? = null,
     val authorThumbnail: String? = null, val rating: String? = null, val subscribed: Boolean? = null,
     val viewCount: String? = null, val published: String? = null, val commentCount: String? = null,
-    val likeCount: String? = null)
+    val likeCount: String? = null,
+    /** Comment-opening capabilities from this same /next response. */
+    val commentCreateKey: String? = null, val commentSortOptions: List<CommentSort> = emptyList(),
+    val commentsTurnedOff: Boolean = false)
 fun watchPage(body: String, videoId: String? = null): WatchPage {
-    val root = jsonObject(body)
+    return watchPage(jsonObject(body), videoId)
+}
+internal fun watchPage(root: Json.Obj?, videoId: String?): WatchPage {
     val singleColumn = root?.path("contents", "singleColumnWatchNextResults")
     val metadata = singleColumn?.path("results", "results")?.let { results ->
         results.objects("videoMetadataRenderer").firstOrNull()
@@ -66,12 +71,18 @@ fun watchPage(body: String, videoId: String? = null): WatchPage {
         ?: controls?.objects("likeButtonRenderer")?.firstOrNull()
     val likeButton = root?.objects("segmentedLikeDislikeButtonViewModel")?.firstOrNull()
         ?.obj("likeButtonViewModel")?.objects("defaultButtonViewModel")?.firstOrNull()?.obj("buttonViewModel")
-    val rating = when {
+    val targetVideoId = videoId ?: details?.text("videoId") ?: metadata?.text("videoId")
+    val viewerRating = root?.let { current ->
+        targetVideoId?.let {
+            viewerEntityState(current, ViewerEntityKind.RATING, it)
+        }
+    }
+    val rating = if (viewerRating != null) viewerRating.state else when {
         like?.bool("isToggled") == true -> "LIKE"
         dislike?.bool("isToggled") == true -> "DISLIKE"
         like?.bool("isToggled") != null || dislike?.bool("isToggled") != null -> "INDIFFERENT"
         else -> metadata?.text("likeStatus") ?: root?.objects("likeButtonRenderer")?.firstOrNull()?.text("likeStatus")
-            ?: root?.objects("likeStatusEntity")?.firstOrNull()?.text("likeStatus")
+            ?: root?.let { inlineViewerEntityState(it, ViewerEntityKind.RATING, targetVideoId) }
     }
     return WatchPage(details?.text("videoId") ?: metadata?.text("videoId") ?: videoId,
         primary?.display("title") ?: details?.text("title"),
@@ -84,7 +95,7 @@ fun watchPage(body: String, videoId: String? = null): WatchPage {
         owner?.path("navigationEndpoint", "browseEndpoint")?.text("browseId")
             ?: owner?.objects("browseEndpoint")?.firstNotNullOfOrNull { it.text("browseId")?.takeIf { id -> id.startsWith("UC") } }
             ?: owner?.path("subscribeButton", "subscribeButtonRenderer")?.text("channelId") ?: details?.text("channelId"), chapters,
-        recommendations?.let(::contentItems).orEmpty(), recommendations?.let(::pageKey), commentKey(body), liveChat?.let(::pageKey),
+        recommendations?.let(::contentItems).orEmpty(), recommendations?.let(::pageKey), root?.let(::commentKey), liveChat?.let(::pageKey),
         readStoryboard(root?.objects("playerStoryboardSpecRenderer")?.firstOrNull()?.text("spec")), queue,
         root?.let { resumeSeconds(it, queue, details?.text("videoId") ?: metadata?.text("videoId") ?: videoId) },
         owner?.thumbnail("thumbnail"),
@@ -101,7 +112,9 @@ fun watchPage(body: String, videoId: String? = null): WatchPage {
             }?.objects("engagementPanelTitleHeaderRenderer")?.firstOrNull()?.display("contextualInfo"),
         likeRenderer?.let { it.display("likeCountText") ?: it.long("likeCount")?.toString() }
             ?: like?.display("defaultText")?.takeIf { text -> text.any(Char::isDigit) }
-            ?: likeButton?.text("title")?.takeIf { text -> text.any(Char::isDigit) })
+            ?: likeButton?.text("title")?.takeIf { text -> text.any(Char::isDigit) },
+        root?.let { commentCreateKey(it) }, root?.let(::commentSortOptions).orEmpty(),
+        root?.objects("messageRenderer")?.any { it.display("text")?.contains("Comments are turned off", true) == true } == true)
 }
 @JvmOverloads
 fun loadWatch(videoId: String?, context: RequestContext = RequestContext(), continuation: String? = null,
@@ -110,6 +123,6 @@ fun loadWatch(videoId: String?, context: RequestContext = RequestContext(), cont
     if (index != null && index < 0) return ReadResult(error = RequestError(RequestFailure.INVALID, "invalid_queue_index"))
     val fields = if (continuation != null) payload("continuation" to continuation) else
         payload("videoId" to videoId, "playlistId" to playlistId, "params" to params) + if (index == null) "" else ",\"index\":$index"
-    val reply = requestObject(youtubeQuery(YOUTUBE_API + "next", fields, context), http)
-    return if (reply.ok) ReadResult(watchPage(reply.value!!.encode(), videoId)) else ReadResult(error = reply.error)
+    val reply = requestObject(youtubeQuery(YOUTUBE_API + "next", fields, context).withCompactResponse(), http)
+    return if (reply.ok) ReadResult(watchPage(reply.value!!, videoId)) else ReadResult(error = reply.error)
 }

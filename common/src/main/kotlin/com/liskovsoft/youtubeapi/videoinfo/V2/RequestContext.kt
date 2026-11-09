@@ -40,12 +40,16 @@ internal fun contextualQuery(query: PlayerQuery, context: RequestContext): Playe
     val origin = try { URI(query.url) } catch (_: Exception) { null }
     val api = origin?.scheme == "https" && origin.host == "www.youtube.com" && origin.port in listOf(-1, 443)
         && origin.rawUserInfo == null && origin.path.startsWith("/youtubei/")
-    headers.keys.filter { it.equals("Cookie",true) || it.equals("Authorization",true) || it.equals("X-Goog-AuthUser",true) || it.equals("X-Origin",true) }.toList().forEach { headers.remove(it) }
+    headers.keys.filter { it.equals("Cookie",true) || it.equals("Authorization",true) || it.equals("X-Goog-AuthUser",true) || it.equals("X-Origin",true) || it.equals("X-Goog-PageId",true) || it.equals("Origin",true) }.toList().forEach { headers.remove(it) }
     if (api && context.accessToken != null) headers["Authorization"] = "Bearer " + context.accessToken
     else if (api) context.webSession?.headers()?.let { headers.putAll(it) }
+    if (api && context.accessToken == null && context.webSession?.signedIn == true && context.onBehalfOfUser != null)
+        headers["X-Goog-PageId"] = context.onBehalfOfUser
     if (api && !context.signedIn && !context.visitorCookie.isNullOrBlank()) headers["Cookie"] = context.visitorCookie
     if (context.visitor != null) headers["X-Goog-Visitor-Id"] = context.visitor
-    val user = context.onBehalfOfUser?.let { Json.Obj(mapOf("onBehalfOfUser" to Json.Str(it))) }
+    val user = context.onBehalfOfUser?.let {
+        Json.Obj(root.obj("context")?.obj("user")?.fields.orEmpty() + ("onBehalfOfUser" to Json.Str(it)))
+    }
     val finalContext = if (user == null) contextFields else contextFields + ("user" to user)
     return query.copy(headers = headers, body = Json.Obj(root.fields + ("context" to Json.Obj(finalContext))).encode())
 }

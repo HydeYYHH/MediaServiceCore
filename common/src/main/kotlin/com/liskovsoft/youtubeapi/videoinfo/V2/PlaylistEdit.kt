@@ -15,7 +15,9 @@ private const val FORGET_URL =
 
 private val failed = PlaylistWrite(false, null)
 
-data class PlaylistChoice(val id: String, val title: String?, val contains: Boolean)
+data class PlaylistChoice @JvmOverloads constructor(val id: String, val title: String?, val contains: Boolean,
+    /** Null when the server did not explicitly say ALL or NONE for this single video. */
+    val containsState: Boolean? = contains)
 
 data class PlaylistWrite(val ok: Boolean, val playlistId: String?)
 
@@ -34,7 +36,8 @@ fun playlistChoices(body: String): List<PlaylistChoice> {
         val option = (item as? Json.Obj)?.obj("playlistAddToOptionRenderer") ?: continue
         val id = option.text("playlistId")?.takeIf { it.isNotEmpty() } ?: continue
         val title = displayText(option.obj("title"))
-        choices.add(PlaylistChoice(id, title, option.text("containsSelectedVideos") == "ALL"))
+        val state = when (option.text("containsSelectedVideos")) { "ALL" -> true; "NONE" -> false; else -> null }
+        choices.add(PlaylistChoice(id, title, state == true, state))
     }
     return choices
 }
