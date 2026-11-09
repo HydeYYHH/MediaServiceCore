@@ -58,6 +58,10 @@ private val specs = mapOf(
         "7",
         "Mozilla/5.0 (ChromiumStylePlatform) Cobalt/25.lts.30.1034943-gold (unlike Gecko), Unknown_TV_Unknown_0/Unknown (Unknown, Unknown)"
     ),
+    PlayerClient.TV_TIZEN to ClientSpec(
+        "TVHTML5", "5.20260707", "7",
+        "Mozilla/5.0 (SMART-TV; Linux; Tizen 2.4.0) AppleWebKit/538.1 (KHTML, like Gecko) Version/2.4.0 TV Safari/538.1"
+    ),
     PlayerClient.ANDROID_VR to ClientSpec(
         "ANDROID_VR",
         "1.65.10",
@@ -65,6 +69,9 @@ private val specs = mapOf(
         "com.google.android.apps.youtube.vr.oculus/1.65.10 (Linux; U; Android 12L; eureka-user Build/SQ3A.220605.009.A1) gzip"
     )
 )
+
+/** Media consumers must keep the issued URL's client posture aligned with /player. */
+fun playerUserAgent(client: PlayerClient): String = specs.getValue(client).agent
 
 fun playerQuery(
     client: PlayerClient,
@@ -81,9 +88,16 @@ fun playerQuery(
         "X-Youtube-Client-Version" to spec.version
     )
     if (!visitor.isNullOrEmpty()) headers["X-Goog-Visitor-Id"] = visitor
+    // This compatibility route needs both the device identity and playback capabilities.
+    // Device fields alone return OK with media URLs that immediately reject reads.
+    val tizen = client == PlayerClient.TV_TIZEN
+    val device = if (tizen) ""","deviceMake":"Samsung","deviceModel":"UKS9800","osName":"Tizen","osVersion":"2.4.0","userAgent":"${spec.agent}","browserName":"Safari","browserVersion":"538.1","clientScreen":"WATCH"""" else ""
+    val user = if (tizen) ""","user":{"enableSafetyMode":false,"lockedSafetyMode":false}""" else ""
+    val playbackFields = if (tizen) ""","html5Preference":"HTML5_PREF_WANTS","lactMilliseconds":60000,"isInlinePlaybackNoAd":true""" else ""
+    val capabilities = if (tizen) ""","devicePlaybackCapabilities":{"supportsVp9Encoding":true,"supportXhr":false}""" else ""
     val playback = if (signatureTimestamp == null) "" else
-        """"playbackContext":{"contentPlaybackContext":{"signatureTimestamp":$signatureTimestamp}},"""
-    val body = """{"context":{"client":{"clientName":"${spec.name}","clientVersion":"${spec.version}","hl":"en","gl":"US"}},${playback}"videoId":"$videoId","contentCheckOk":true,"racyCheckOk":true}"""
+        """"playbackContext":{"contentPlaybackContext":{"signatureTimestamp":$signatureTimestamp$playbackFields}$capabilities},"""
+    val body = """{"context":{"client":{"clientName":"${spec.name}","clientVersion":"${spec.version}","hl":"en","gl":"US"$device}$user},${playback}"videoId":"$videoId","contentCheckOk":true,"racyCheckOk":true}"""
     return PlayerQuery(PLAYER_URL, headers, body)
 }
 

@@ -9,7 +9,8 @@ class PlayerContextTest {
         val purposes = ArrayList<TokenPurpose>()
         val provider = object : PlayerTokenProvider { override fun token(request: PlayerTokenRequest): PlayerToken {
             assertEquals("video", request.videoId); assertNull(request.context.accountId)
-            purposes.add(request.purpose); return PlayerToken(request.purpose.name, 10000)
+            purposes.add(request.purpose)
+            return PlayerToken(request.purpose.name, if (request.purpose == TokenPurpose.SUBTITLE) 5000 else 10000)
         }}
         val solve = object : PlayerSolver { override fun solve(request: PlayerChallengeRequest): PlayerChallenge {
             assertEquals("https://script/one", request.script.url)
@@ -19,11 +20,68 @@ class PlayerContextTest {
         val http = object : HttpClient { override fun execute(request: HttpRequest): HttpReply {
             assertNull(request.headers["Authorization"])
             assertEquals("PLAYER", jsonObject(request.body)!!.obj("serviceIntegrityDimensions")!!.text("poToken"))
-            return HttpReply(200, """{"streamingData":{"formats":[{"signatureCipher":"s=abc&url=https%3A%2F%2Fx"}]}}""")
+            return HttpReply(200, """{"streamingData":{"formats":[{"signatureCipher":"s=abc&url=https%3A%2F%2Fx"}]},"captions":{"playerCaptionsTracklistRenderer":{"captionTracks":[{"baseUrl":"https://captions.test/track","languageCode":"en"}]}}}""")
         }}
         val result = loadPlayer("video", RequestContext("account", "secret"), http, PlayerScript("https://script/one", "signatureTimestamp:123"), solve, provider, now = {0})
         assertTrue(result.ok); assertEquals(listOf(TokenPurpose.PLAYER, TokenPurpose.MEDIA, TokenPurpose.SUBTITLE), purposes)
         assertEquals("MEDIA", urlParameter(result.value!!.answer!!.muxedFormats.single().url!!, "pot"))
+        assertEquals("SUBTITLE", urlParameter(result.value!!.answer!!.captions.single().url!!, "pot"))
+        assertEquals(5000L, result.value!!.answer!!.expiresAtMs)
+    }
+
+    @Test fun missingOrUnusableCaptionUrlsDoNotEnterTheSubtitleTokenStage() {
+        val excluded = PlayerClient.values().toSet() - PlayerClient.WEB_SAFARI
+        for (captions in listOf("", ""","captions":{"playerCaptionsTracklistRenderer":{"captionTracks":[{"languageCode":"en"},{"baseUrl":" ","languageCode":"fr"}]}}""")) {
+            var time = 0L
+            val purposes = mutableListOf<TokenPurpose>()
+            val attempts = mutableListOf<PlayerLoadAttempt>()
+            val tokens = object : PlayerTokenProvider {
+                override fun token(request: PlayerTokenRequest): PlayerToken {
+                    purposes += request.purpose
+                    time += 20 // Deterministic stand-in for blocking mint work.
+                    return PlayerToken(request.purpose.name, 10000)
+                }
+            }
+            val result = loadPlayer("video", RequestContext(), object : HttpClient {
+                override fun execute(request: HttpRequest) = HttpReply(200,
+                    """{"streamingData":{"formats":[{"url":"https://media.test/video"}]}$captions}""")
+            }, tokens = tokens, excluded = excluded, now = { time }, onAttempt = attempts::add)
+
+            assertTrue(result.ok)
+            assertEquals(listOf(TokenPurpose.PLAYER, TokenPurpose.MEDIA), purposes)
+            assertEquals(40L, attempts.single().elapsedMs)
+            assertEquals("MEDIA", urlParameter(result.value!!.answer!!.muxedFormats.single().url!!, "pot"))
+        }
+    }
+
+    @Test fun rejectedAnswersDoNotEnterTheMediaOrSubtitleTokenStages() {
+        val excluded = PlayerClient.values().toSet() - PlayerClient.WEB_SAFARI
+        val responses = listOf(
+            """{"playabilityStatus":{"status":"UNPLAYABLE","reason":"Unavailable"}}""" to "playability_unplayable",
+            "{}" to "no_matching_format",
+            """{"streamingData":{"formats":[{"url":"https://media.test/2160","height":2160}]}}""" to "no_matching_format",
+            """{"streamingData":{"formats":[{"signatureCipher":"s=unresolved&url=https%3A%2F%2Fmedia.test%2Fvideo"}]}}""" to "no_matching_format"
+        )
+        for ((body, code) in responses) {
+            var time = 0L
+            val purposes = mutableListOf<TokenPurpose>()
+            val attempts = mutableListOf<PlayerLoadAttempt>()
+            val tokens = object : PlayerTokenProvider {
+                override fun token(request: PlayerTokenRequest): PlayerToken {
+                    purposes += request.purpose
+                    time += 20
+                    return PlayerToken(request.purpose.name, 10000)
+                }
+            }
+            val result = loadPlayer("video", RequestContext(), object : HttpClient {
+                override fun execute(request: HttpRequest) = HttpReply(200, body)
+            }, tokens = tokens, excluded = excluded, now = { time }, preference = PlaybackPreference(maxHeight = 480),
+                onAttempt = attempts::add)
+
+            assertEquals(code, result.error?.code)
+            assertEquals(listOf(TokenPurpose.PLAYER), purposes)
+            assertEquals(20L, attempts.single().elapsedMs)
+        }
     }
     @Test fun reportsMissingSourcesInsteadOfReturningASuccessWithNoUrls() {
         val http = object : HttpClient { override fun execute(request: HttpRequest) = HttpReply(200, "{}") }

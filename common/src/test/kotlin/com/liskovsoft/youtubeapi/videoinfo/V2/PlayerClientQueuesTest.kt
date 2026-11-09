@@ -16,7 +16,7 @@ class PlayerClientQueuesTest {
             queues.order(vod)
         )
         assertEquals(
-            listOf(PlayerClient.WEB_SAFARI, PlayerClient.VISIONOS, PlayerClient.WEB, PlayerClient.WEB_EMBED, PlayerClient.TV, PlayerClient.ANDROID_VR),
+            listOf(PlayerClient.WEB_SAFARI, PlayerClient.VISIONOS, PlayerClient.TV_TIZEN, PlayerClient.WEB, PlayerClient.WEB_EMBED, PlayerClient.TV, PlayerClient.ANDROID_VR),
             queues.order(signedInVod)
         )
         assertEquals(

@@ -10,6 +10,32 @@ internal fun playerTracking(root: Json.Obj?): PlayerTracking {
     val tracking = root?.obj("playbackTracking")
     return PlayerTracking(tracking?.obj("videostatsPlaybackUrl")?.text("baseUrl"), tracking?.obj("videostatsWatchtimeUrl")?.text("baseUrl"))
 }
+
+/** Account history needs tracking issued to that account, even when media plays anonymously. */
+fun loadAccountWatchTracking(videoId: String, context: RequestContext, http: HttpClient = JvmHttpClient(),
+    scripts: PlayerScriptProvider = JvmPlayerScripts(http)): ReadResult<PlayerTracking> {
+    if (!videoIdAccepted(videoId)) return ReadResult(error = RequestError(RequestFailure.INVALID, "invalid_video_id"))
+    if (!context.signedIn) return ReadResult(error = RequestError(RequestFailure.AUTH, "sign_in_required"))
+    val tracking = if (context.accessToken.isNullOrBlank()) {
+        val details = loadPlayerDetails(videoId, context, http)
+        if (!details.ok) return ReadResult(error = details.error)
+        details.value!!.tracking
+    } else {
+        // The metadata-only TV request can be UNPLAYABLE with no tracking. This TV
+        // compatibility profile requires the current player's signature timestamp.
+        val script = scripts.script(videoId, context, false)
+        if (!script.ok) return ReadResult(error = script.error)
+        val timestamp = signatureTimestamp(script.value!!.source)
+            ?: return ReadResult(error = RequestError(RequestFailure.PARSE, "missing_signature_timestamp"))
+        val response = requestObject(contextualQuery(playerQuery(PlayerClient.TV_TIZEN, videoId, context.visitor, timestamp), context), http)
+        if (!response.ok) return ReadResult(error = response.error)
+        playerTracking(response.value)
+    }
+    if (tracking?.playbackUrl.isNullOrBlank() || tracking?.watchTimeUrl.isNullOrBlank())
+        return ReadResult(error = RequestError(RequestFailure.PARSE, "missing_account_tracking"))
+    return ReadResult(tracking)
+}
+
 fun setWatchHistory(enabled: Boolean, context: RequestContext, http: HttpClient = JvmHttpClient()) =
     signedAction("history/" + if (enabled) "resume_watch_history" else "pause_watch_history", "\"nop\":\"false\"", context, http)
 fun clearWatchHistory(context: RequestContext, http: HttpClient = JvmHttpClient()) =
@@ -74,7 +100,8 @@ class WatchHistory(private val http: HttpClient = JvmHttpClient()) {
             uri.path != if (playback) "/api/stats/playback" else "/api/stats/watchtime")
             return ReadResult(error = RequestError(RequestFailure.INVALID, "invalid_tracking_url"))
         var url = base!!
-        val fields = listOf("docid" to videoId, "cpn" to cpn, "cmt" to (positionMs / 1000.0).toString(), "len" to (durationMs / 1000.0).toString(),
+        // Without ver=2, YouTube can return 204 without persisting account history.
+        val fields = listOf("ver" to "2", "docid" to videoId, "cpn" to cpn, "cmt" to (positionMs / 1000.0).toString(), "len" to (durationMs / 1000.0).toString(),
             "st" to (startMs / 1000.0).toString(), "et" to (endMs / 1000.0).toString())
         for ((name, value) in fields) url = urlWithParameter(url, name, value)
         val headers = (if (!context.accessToken.isNullOrBlank()) mapOf("Authorization" to "Bearer " + context.accessToken)

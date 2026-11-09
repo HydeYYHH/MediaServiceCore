@@ -14,7 +14,7 @@ class WebSession(val cookies: String, val accountIndex: Int = 0) {
             .digest("$nowSeconds $sapisid $origin".toByteArray(Charsets.UTF_8))
             .joinToString("") { "%02x".format(it.toInt() and 255) }
         return mapOf("Cookie" to cookies, "Authorization" to "SAPISIDHASH ${nowSeconds}_$hash",
-            "X-Goog-AuthUser" to accountIndex.toString(), "X-Origin" to origin)
+            "X-Goog-AuthUser" to accountIndex.toString(), "X-Origin" to origin, "Origin" to origin)
     }
     internal fun scope() = textDigest(cookies) + ":" + accountIndex
     override fun toString() = "WebSession(accountIndex=$accountIndex)"

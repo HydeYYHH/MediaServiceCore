@@ -21,7 +21,7 @@ class PlayerIdentityTest {
                 return HttpReply(200, "{\"streamingData\":{\"formats\":[{\"url\":\"https://media\"}]}}")
             }
         }
-        assertTrue(loadPlayer("v", original, http, tokens = tokens).ok)
+        assertTrue(loadPlayer("v", original, http, tokens = tokens, excluded = setOf(PlayerClient.TV_TIZEN)).ok)
         assertEquals(original, identities[PlayerClient.TV])
         assertEquals(original.anonymous(), identities[PlayerClient.VISIONOS])
         assertNull(identities[PlayerClient.WEB]!!.onBehalfOfUser)

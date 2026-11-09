@@ -1,7 +1,7 @@
 package com.liskovsoft.youtubeapi.videoinfo.V2
 
 internal fun initialDataDocument(html: String): Json.Obj? {
-    val match = Regex("(?:var\\s+)?ytInitialData\\s*=\\s*").find(html) ?: return null
+    val match = Regex("(?:var\\s+)?ytInitialData\\s*=\\s*|window\\[\"ytInitialData\"\\]\\s*=\\s*").find(html) ?: return null
     val tail = html.substring(match.range.last + 1).trimStart()
     if (tail.startsWith("{") ) {
         var depth = 0

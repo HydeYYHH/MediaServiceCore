@@ -8,14 +8,20 @@ data class PlayerCaption(val url: String?, val language: String?, val name: Stri
     val automatic: Boolean, val translatable: Boolean, val translated: Boolean = false)
 data class CaptionLanguage(val code: String, val name: String?)
 fun playerCaptions(body: String): List<PlayerCaption> {
-    val root = jsonObject(body)?.path("captions", "playerCaptionsTracklistRenderer") ?: return emptyList()
+    return playerCaptions(jsonObject(body) ?: return emptyList())
+}
+internal fun playerCaptions(response: Json.Obj): List<PlayerCaption> {
+    val root = response.path("captions", "playerCaptionsTracklistRenderer") ?: return emptyList()
     return root.arr("captionTracks").mapNotNull { it as? Json.Obj }.map {
         PlayerCaption(it.text("baseUrl"), it.text("languageCode"), it.display("name"), it.text("vssId"),
             it.text("kind") == "asr", it.bool("isTranslatable") == true)
     }
 }
 fun captionLanguages(body: String): List<CaptionLanguage> {
-    val root = jsonObject(body)?.path("captions", "playerCaptionsTracklistRenderer") ?: return emptyList()
+    return captionLanguages(jsonObject(body) ?: return emptyList())
+}
+internal fun captionLanguages(response: Json.Obj): List<CaptionLanguage> {
+    val root = response.path("captions", "playerCaptionsTracklistRenderer") ?: return emptyList()
     return root.arr("translationLanguages").mapNotNull { it as? Json.Obj }.mapNotNull {
         it.text("languageCode")?.let { code -> CaptionLanguage(code, it.display("languageName")) }
     }.distinctBy { it.code.toLowerCase(Locale.ROOT) }

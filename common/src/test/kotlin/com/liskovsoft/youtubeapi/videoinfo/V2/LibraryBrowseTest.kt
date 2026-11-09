@@ -2,6 +2,27 @@ package com.liskovsoft.youtubeapi.videoinfo.V2
 import org.junit.Assert.*
 import org.junit.Test
 class LibraryBrowseTest {
+    @Test fun anOpenedInitialBrowseSuppliesTheDirectoryWithoutRepeatingTheRequest() {
+        var calls = 0
+        val http = object : HttpClient { override fun execute(request: HttpRequest): HttpReply {
+            calls++
+            return HttpReply(200, """{"contents":{"twoColumnBrowseResultsRenderer":{"tabs":[{"tabRenderer":{
+                "title":"Ada","endpoint":{"browseEndpoint":{"browseId":"UCada","params":"channel-filter"}},
+                "presentationStyle":{"style":"NEW_CONTENT"}}}]}},"videoRenderer":{"videoId":"abcdefghijk"}}""")
+        } }
+        val context = RequestContext("a", "token", generation = 7)
+        val opened = loadSubscriptionsBrowse(context, http).value!!
+        assertEquals("abcdefghijk", opened.feed.value!!.items.single().id)
+        val directory = loadSubscribedChannelsPage(context, opened, http).value!!
+        assertEquals("channel-filter", directory.channels.single().params)
+        assertTrue(directory.channels.single().hasNewContent)
+        assertEquals(1, calls)
+        loadSubscribedChannelsPage(context.copy(generation = 8), opened, http)
+        assertEquals(2, calls)
+        loadSubscribedChannelsPage(context.copy(accessToken = "rotated"), opened, http)
+        assertEquals(3, calls)
+    }
+
     @Test fun requiresAnAccountAndKeepsPrivateEmptyPagesDistinctFromErrors() {
         var calls = 0
         val http = object : HttpClient { override fun execute(request: HttpRequest): HttpReply {
@@ -24,7 +45,7 @@ class LibraryBrowseTest {
             return HttpReply(200, """{"guideEntryRenderer":{"formattedTitle":{"simpleText":"Ada"},"navigationEndpoint":{"browseEndpoint":{"browseId":"UCada"}}}}""")
         }}
         assertEquals("Ada", loadSubscribedChannels(RequestContext("a", "t"), http).value!!.single().title)
-        assertEquals(1, calls)
+        assertEquals(2, calls) // TV subscriptions tabs, then the guide fallback.
     }
 
     @Test fun anAccountOnlyGuideFallsBackToTheSubscribedChannelsBrowse() {
@@ -32,6 +53,7 @@ class LibraryBrowseTest {
         val http = object : HttpClient { override fun execute(request: HttpRequest): HttpReply {
             calls++
             assertEquals("Bearer token", request.headers["Authorization"])
+            if (jsonObject(request.body)?.text("browseId") == "FEsubscriptions") return HttpReply(200, "{}")
             return if (request.url.contains("guide")) HttpReply(200, """{"guideAccountEntryRenderer":{}}""")
             else {
                 assertEquals("FEchannels", jsonObject(request.body)!!.text("browseId"))
@@ -42,7 +64,7 @@ class LibraryBrowseTest {
         assertEquals("UCada", item.id)
         assertEquals("Ada", item.title)
         assertEquals("https://example.com/avatar", item.thumbnail)
-        assertEquals(2, calls)
+        assertEquals(3, calls)
     }
 
     @Test fun aRejectedFallbackRemainsAnError() {

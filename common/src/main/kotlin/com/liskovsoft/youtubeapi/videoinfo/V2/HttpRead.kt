@@ -27,6 +27,8 @@ data class RequestError(
     /** Exception class and a bounded, non-sensitive transport reason. */
     val cause: String? = null,
 )
+/** A deliberate request policy failure must survive transport normalization. */
+open class RequestException(val failure: RequestError) : IOException(failure.code)
 data class ReadResult<T>(val value: T? = null, val error: RequestError? = null) {
     val ok: Boolean get() = error == null && value != null
 }
@@ -54,7 +56,8 @@ class JvmHttpClient(private val timeoutMs: Int = 15000, private val maxBodyBytes
                 while (true) {
                     val count = it.read(bytes)
                     if (count < 0) break
-                    if (out.size() + count > maxBodyBytes) throw IOException("response_too_large")
+                    if (out.size() + count > maxBodyBytes)
+                        throw RequestException(RequestError(RequestFailure.PARSE, "response_too_large"))
                     out.write(bytes, 0, count)
                 }
                 String(out.toByteArray(), Charsets.UTF_8)
@@ -100,12 +103,13 @@ private fun isTrafficChallengeLocation(location: String): Boolean = try {
  * stay distinguishable so callers can decide between retry, auth repair or reporting.
  */
 fun transportError(error: Exception): RequestError {
+    if (error is RequestException) return error.failure
     if (error is InterruptedException) {
         Thread.currentThread().interrupt()
         return RequestError(RequestFailure.CANCELLED, "cancelled", cause = describe(error))
     }
     val message = error.message?.lowercase().orEmpty()
-    if (message == "canceled" || message == "cancelled") {
+    if (message == "canceled" || message == "cancelled" || message == "session_changed_or_cancelled") {
         return RequestError(RequestFailure.CANCELLED, "cancelled", cause = describe(error))
     }
     val code = when (error) {

@@ -10,27 +10,51 @@ class WebDocumentTest {
         assertEquals("Hello", initialDataDocument(quoted)!!.text("title"))
         assertNull(initialDataDocument("var ytInitialData = {"))
     }
-    @Test fun aRejectedSeedlessEndpointFallsBackToThePublicDocumentAndKeepsTheCurrentIdentity() {
+    @Test fun seedlessDocumentKeepsTheCurrentVideoSeparateFromTheReplacementIdentity() {
         val calls = ArrayList<HttpRequest>()
         val http = object : HttpClient {
             override fun execute(request: HttpRequest): HttpReply {
                 calls += request
-                return if (request.method == "POST") HttpReply(400, "{}") else HttpReply(200,
+                assertEquals("GET", request.method)
+                return HttpReply(200,
                     """var ytInitialData = {"overlay":{"reelPlayerOverlayRenderer":{"doubleTapLikeButton":{"likeButtonRenderer":{"target":{"videoId":"current"}}}}},"replacementEndpoint":{"reelWatchEndpoint":{"videoId":"next"}},"title":{"videoTitleHeaderViewModel":{"videoTitle":{"content":"Current title"}}}};""")
             }
         }
-        val page = loadHome(HomeSection.SHORTS, http = http).value!!
+        val context = RequestContext("account", "token", "visitor", "zh-CN", "CN", 7, "brand",
+            visitorCookie = "VISITOR_INFO1_LIVE=private")
+        val page = loadHome(HomeSection.SHORTS, context, http = http).value!!
         assertEquals(listOf("current", "next"), page.items.map { it.id })
         assertEquals("Current title", page.items.first().title)
         assertNull(page.items.last().title)
-        assertEquals(2, calls.size)
-        assertEquals("GET", calls.last().method)
+        val request = calls.single()
+        assertEquals("https://m.youtube.com/shorts?hl=zh-CN", request.url)
+        assertTrue(request.body.isEmpty())
+        assertTrue(request.headers.keys.none { it.equals("Authorization", true) || it.equals("Cookie", true) ||
+            it.equals("X-Goog-Visitor-Id", true) || it.equals("X-Goog-PageId", true) })
     }
     @Test fun authenticationAndVerificationFailuresAreNotBypassed() {
-        var count = 0
-        val http = object : HttpClient { override fun execute(request: HttpRequest): HttpReply { count++; return HttpReply(429, "{}") } }
-        assertFalse(loadHome(HomeSection.SHORTS, http = http).ok)
-        assertEquals(1, count)
+        val challenge = "https://www.google.com/sorry/index?continue=https%3A%2F%2Fm.youtube.com%2Fshorts"
+        val failures = listOf(
+            HttpReply(401, "{}") to RequestError(RequestFailure.AUTH, "http_401", 401),
+            HttpReply(403, "{}") to RequestError(RequestFailure.AUTH, "http_403", 403),
+            HttpReply(429, "{}", mapOf("Retry-After" to "7")) to RequestError(RequestFailure.HTTP, "http_429", 429, 7_000),
+            HttpReply(302, "", mapOf("Location" to challenge)) to RequestError(RequestFailure.VERIFICATION,
+                "traffic_challenge", 302, detail = challenge),
+        )
+        for ((reply, expected) in failures) {
+            var count = 0
+            val http = object : HttpClient {
+                override fun execute(request: HttpRequest): HttpReply {
+                    count++
+                    assertEquals("GET", request.method)
+                    return reply
+                }
+            }
+            val result = loadHome(HomeSection.SHORTS, http = http)
+            assertNull(result.value)
+            assertEquals(expected, result.error)
+            assertEquals(1, count)
+        }
     }
     @Test fun anonymousWatchProgressRequiresAnIdentityAndOnlyUsesApprovedTrackingOrigins() {
         val calls = ArrayList<HttpRequest>()

@@ -34,4 +34,25 @@ class ChatReplayTest {
         assertEquals(RequestFailure.CANCELLED, replay.read(0).error!!.kind)
         assertEquals(3, keys.size)
     }
+
+    @Test fun perReadTransportsPreserveContinuationDeduplicationAndBackwardSeek() {
+        val keys = arrayListOf<String>()
+        fun transport() = object : HttpClient {
+            override fun execute(request: HttpRequest): HttpReply {
+                keys.add(jsonObject(request.body)!!.text("continuation")!!)
+                return HttpReply(200, body)
+            }
+        }
+        val replay = ChatReplay("first", http = object : HttpClient {
+            override fun execute(request: HttpRequest): HttpReply = error("Use the current read's transport")
+        })
+        val context = RequestContext()
+        assertEquals(1, replay.read(0, context, transport()).value!!.messages.size)
+        assertEquals(0, replay.read(2000, context, transport()).value!!.messages.size)
+        assertEquals(1, replay.read(0, context, transport()).value!!.messages.size)
+        assertEquals(listOf("first", "next", "first"), keys)
+        replay.close()
+        assertEquals(RequestFailure.CANCELLED, replay.read(0, context, transport()).error!!.kind)
+        assertEquals(3, keys.size)
+    }
 }

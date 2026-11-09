@@ -28,7 +28,7 @@ class PlayerScriptReadTest {
         assertEquals(listOf(1), seen)
         assertTrue(session.load("v", fresh = true).ok)
         assertEquals(listOf(1, 2), seen)
-        assertEquals(6, tokenCalls)
+        assertEquals(4, tokenCalls)
     }
 
     @Test fun reportsScriptReadFailures() {

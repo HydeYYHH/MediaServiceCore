@@ -92,7 +92,11 @@ class PlayerAttempt(private val queues: PlayerClientQueues) {
     }
 
     fun run(signIn: SignIn, deferred: Set<PlayerClient> = emptySet(), excluded: Set<PlayerClient> = emptySet(),
-        fetch: (PlayerClient) -> PlayerAnswer): AttemptResult {
+        fetch: (PlayerClient) -> PlayerAnswer): AttemptResult =
+        runCancellable(signIn, deferred, excluded, { false }, fetch)
+
+    internal fun runCancellable(signIn: SignIn, deferred: Set<PlayerClient>, excluded: Set<PlayerClient>,
+        cancelled: () -> Boolean, fetch: (PlayerClient) -> PlayerAnswer): AttemptResult {
         fun ordered(clients: List<PlayerClient>): List<PlayerClient> =
             clients.filter { it !in excluded && it !in deferred } + clients.filter { it !in excluded && it in deferred }
         var form = PlaybackForm.VOD
@@ -106,6 +110,9 @@ class PlayerAttempt(private val queues: PlayerClientQueues) {
             index++
             if (!tried.add(client)) continue
             val answer = fetch(client)
+            // A cancelled owner says nothing about client validity. Do not probe or
+            // demote the remaining queue, including its remembered successful client.
+            if (cancelled()) return AttemptResult(form, null)
             if (form == PlaybackForm.VOD && answer.live) {
                 form = PlaybackForm.LIVE
                 attempts.clear()
@@ -119,6 +126,14 @@ class PlayerAttempt(private val queues: PlayerClientQueues) {
                 continue
             }
             record(attempts, client, answer, form == PlaybackForm.LIVE)
+            // An explicit guest challenge makes the account route the next useful
+            // attempt. Do not spend a cold Web token mint before asking it, and
+            // respect media-rejection deferrals and exclusions from this walk.
+            if (form == PlaybackForm.VOD && signIn == SignIn.SIGNED_IN && isBotCheck(answer.reason) &&
+                PlayerClient.TV_TIZEN !in tried && PlayerClient.TV_TIZEN !in deferred &&
+                PlayerClient.TV_TIZEN in pending.drop(index)) {
+                pending = pending.take(index) + PlayerClient.TV_TIZEN + pending.drop(index).filter { it != PlayerClient.TV_TIZEN }
+            }
             if (attempts.last().second == ClientOutcome.PLAYED) {
                 played = client
                 break
