@@ -1,17 +1,28 @@
 # Independent MediaServiceCore
 
-Pure JVM Kotlin core. Kotlin 1.3.72, JVM 8. The default build includes only `common`.
+Pure JVM Kotlin core. Kotlin 2.2.20, JVM 17. The default build includes only `common`.
 
 ## Build and verify
 
-Use JDK 8 with the checked-in Gradle 5.4.1 wrapper:
+Use JDK 21 with the checked-in Gradle 8.11.1 wrapper:
 
 ```powershell
-$env:JAVA_HOME = 'C:/path/to/jdk8'
+$env:JAVA_HOME = 'C:/path/to/jdk21'
 .\gradlew.bat :common:check :common:jar
 ```
 
-The JAR is `common/build/libs/common.jar`. Kotlin stdlib 1.3.72 is its runtime dependency. `verifyStandalone` compiles and runs `src/consumer/java/example/Standalone.java` against the JAR plus runtime dependencies, without the main class directories, Android, SharedModules or Litube.
+The JAR is in `common/build/libs`. Kotlin stdlib 2.2.20 is its runtime dependency. `verifyStandalone` compiles and runs `src/consumer/java/example/Standalone.java` against the JAR plus runtime dependencies, without the main class directories, Android, SharedModules or Litube.
+
+## Maven releases
+
+JitPack runs `:common:check` and `:common:publishToMavenLocal` for the requested Git tag. The publication includes the core JAR, source JAR and a POM with runtime dependencies.
+
+```kotlin
+repositories { maven { url = uri("https://jitpack.io") } }
+dependencies { implementation("com.github.HydeYYHH:MediaServiceCore:<tag>") }
+```
+
+Pin a release tag instead of a moving branch or local source directory. The artifact requires Java 17 or an Android toolchain that supports Java 17 bytecode.
 
 Legacy Android modules are opt-in with `-PincludeLegacyModules=true` and require their original SharedModules dependencies. Their build is outside this independent-core validation.
 
@@ -67,6 +78,6 @@ Connection close wakes default polling/reconnect waits and stops further deliver
 .\gradlew.bat :common:onlineReadTest
 ```
 
-This separately enabled task performs only public YouTube search/home/oEmbed/player-script, SponsorBlock and RYD reads. Current validation is 234 default tests plus 6 online reads, all passing. Default tests perform no external account mutations. Historical fixtures are sanitized projections of checked-in upstream responses and cover their recorded shapes, not every current YouTube variant.
+This separately enabled task performs only public YouTube search/home/oEmbed/player-script, SponsorBlock and RYD reads. The default check runs regression tests and the packaged Java consumer; it performs no external account mutations. Historical fixtures are sanitized projections of checked-in upstream responses and cover their recorded shapes, not every current YouTube variant.
 
 See [DEVELOPMENT.md](DEVELOPMENT.md) for mechanisms, names, per-commit references, tests and the online result. OAuth with real credentials, authenticated writes, real JS/Token providers, continuous playback and actual Lounge devices require separate integration acceptance.

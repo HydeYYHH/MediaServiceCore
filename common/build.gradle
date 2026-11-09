@@ -3,31 +3,43 @@ buildscript {
         mavenCentral()
     }
     dependencies {
-        classpath 'org.jetbrains.kotlin:kotlin-gradle-plugin:1.3.72'
+        classpath 'org.jetbrains.kotlin:kotlin-gradle-plugin:2.2.20'
     }
 }
 
 apply plugin: 'kotlin'
+apply plugin: 'maven-publish'
+
+group = 'com.github.HydeYYHH'
+version = System.getenv('VERSION') ?: providers.gradleProperty('releaseVersion').getOrElse('unspecified')
 
 repositories {
     mavenCentral()
 }
 
 dependencies {
-    implementation 'org.jetbrains.kotlin:kotlin-stdlib:1.3.72'
+    implementation 'org.jetbrains.kotlin:kotlin-stdlib:2.2.20'
     testImplementation 'junit:junit:4.13.2'
+    testImplementation 'com.squareup.okhttp3:mockwebserver:4.12.0'
 }
 
-sourceCompatibility = JavaVersion.VERSION_1_8
-targetCompatibility = JavaVersion.VERSION_1_8
+java {
+    sourceCompatibility = JavaVersion.VERSION_17
+    targetCompatibility = JavaVersion.VERSION_17
+    withSourcesJar()
+}
 
-compileKotlin.kotlinOptions.jvmTarget = '1.8'
-compileTestKotlin.kotlinOptions.jvmTarget = '1.8'
+kotlin {
+    compilerOptions {
+        languageVersion.set(org.jetbrains.kotlin.gradle.dsl.KotlinVersion.KOTLIN_1_9)
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+    }
+}
 
 sourceSets {
     consumer {
         java.srcDir 'src/consumer/java'
-        compileClasspath = files(jar.archivePath) + configurations.runtimeClasspath
+        compileClasspath = files(jar.archiveFile) + configurations.runtimeClasspath
         runtimeClasspath = output + compileClasspath
     }
 }
@@ -35,7 +47,7 @@ compileConsumerJava.dependsOn jar
 task verifyStandalone(type: JavaExec) {
     dependsOn compileConsumerJava
     classpath = sourceSets.consumer.runtimeClasspath
-    main = 'example.Standalone'
+    mainClass = 'example.Standalone'
 }
 check.dependsOn verifyStandalone
 
@@ -46,4 +58,26 @@ task onlineReadTest(type: Test) {
     classpath = sourceSets.test.runtimeClasspath
     include '**/OnlineReadTest.class'
     systemProperty 'msc.online', 'true'
+}
+
+publishing {
+    publications {
+        maven(MavenPublication) {
+            artifactId = 'MediaServiceCore'
+            from components.java
+            pom {
+                name = 'MediaServiceCore'
+                description = 'Standalone JVM core for YouTube content, account actions and playback.'
+                url = 'https://github.com/HydeYYHH/MediaServiceCore'
+                scm {
+                    connection = 'scm:git:https://github.com/HydeYYHH/MediaServiceCore.git'
+                    url = 'https://github.com/HydeYYHH/MediaServiceCore'
+                }
+            }
+        }
+    }
+}
+
+tasks.withType(org.gradle.api.publish.maven.tasks.PublishToMavenLocal).configureEach {
+    dependsOn tasks.named('check')
 }
