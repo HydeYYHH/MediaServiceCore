@@ -146,7 +146,7 @@ fun loadChannelPosts(channelId: String, context: RequestContext = RequestContext
     val response = requestObject(channelQuery(channelId, context).withCompactResponse(), http)
     if (!response.ok) return ReadResult(error = response.error)
     val root = response.value!!
-    val tabs = ownedChannelTabs(root)
+    val tabs = ownedChannelTabs(root, channelId)
         ?: return ReadResult(error = RequestError(RequestFailure.PARSE, "unknown_channel_tabs"))
     val webTabs = root.obj("contents")?.fields?.keys?.any {
         it in setOf("twoColumnBrowseResultsRenderer", "singleColumnBrowseResultsRenderer")

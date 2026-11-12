@@ -61,6 +61,7 @@ class AccountSession(private var context: RequestContext = RequestContext()) {
         val same = !context.signedIn && context.accountId == null && context.onBehalfOfUser == null &&
             visitorIdentity(context.visitorCookie, context.visitor) == visitorIdentity(visitor.cookies, visitor.visitorData)
         context = visitor.requestContext(context.language, context.region, context.generation + if (same) 0 else 1)
+            .copy(actionAttestationProvider = context.actionAttestationProvider)
         accounts = emptyList()
         return context
     }

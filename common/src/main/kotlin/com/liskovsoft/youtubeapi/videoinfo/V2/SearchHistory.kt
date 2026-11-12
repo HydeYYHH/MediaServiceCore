@@ -33,7 +33,7 @@ class SearchHistory(private val store: SearchHistoryStore = MemorySearchHistoryS
     fun clearRemote(context: RequestContext, http: HttpClient = JvmHttpClient()): ReadResult<ActionReply> {
         if (!context.signedIn) return ReadResult(error = RequestError(RequestFailure.AUTH, "sign_in_required"))
         val result = requestAction(youtubeQuery(YOUTUBE_API + "history/clear_search_history", "\"nop\":\"false\"", context),
-            http, entityScope = ActionEntityScope.None)
+            http, entityScope = ActionEntityScope.None, context = context)
         if (result.ok && result.value?.confirmed == true) clear(context)
         return result
     }

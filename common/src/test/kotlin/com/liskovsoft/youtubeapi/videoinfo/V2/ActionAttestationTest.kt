@@ -21,7 +21,8 @@ class ActionAttestationTest {
         val wire = Wire(body)
         val result = voteVideo(video, VideoVote.DISLIKE, context, wire)
         assertFalse(body, result.ok)
-        assertNull(result.value)
+        // The failed overall operation retains any mutation acknowledgement for recovery.
+        assertNotNull(result.value)
         val error = result.error!!
         assertEquals(RequestFailure.VERIFICATION, error.kind)
         assertEquals("attestation_required", error.code)

@@ -11,7 +11,8 @@ internal fun sendChatMessage(params: String, text: String, context: RequestConte
     var failure: Pair<Int, String?>? = null
     val transport = object : HttpClient {
         override fun execute(request: HttpRequest): HttpReply = http.execute(request).also { response ->
-            if (response.status !in 200..299) failure = response.status to jsonObject(response.body)?.obj("error")?.text("status")
+            if (request.url.substringBefore('?') == YOUTUBE_API + "live_chat/send_message" && response.status !in 200..299)
+                failure = response.status to jsonObject(response.body)?.obj("error")?.text("status")
         }
     }
     val reply = signedAction("live_chat/send_message", fields, context, transport)
@@ -41,7 +42,7 @@ internal fun sendChatMessage(params: String, text: String, context: RequestConte
                 returnedIds.all { (it as? Json.Str)?.value == clientMessageId }
         }
     } == true
-    return ReadResult(value.copy(state = if (echoed) ActionState.CONFIRMED else ActionState.UNCONFIRMED))
+    return ReadResult(value.copy(state = if (echoed) ActionState.CONFIRMED else ActionState.UNCONFIRMED), error = reply.error)
 }
 
 /** Address parameters belong to the account/channel that read the chat. The service enforces permission. */

@@ -591,14 +591,42 @@ private class CommentProjection {
     }
     fun mutation(root: Json.Obj): Json.Obj {
         budget(root); metadata(root)
-        // Mutation envelopes may carry status/actions, but only direct returned comment data can mint a model.
+        val created = ArrayList<Json.Obj>()
+        if (root.fields.containsKey("actions")) {
+            val actions = arrayAt(root, "actions"); require(actions.size <= 8)
+            for (value in actions) {
+                val action = value as? Json.Obj ?: throw Invalid()
+                val declared = listOf("createCommentAction", "createCommentReplyAction").filter(action.fields::containsKey)
+                if (declared.isEmpty()) continue
+                require(declared.size == 1)
+                val name = declared.single()
+                require(action.fields.keys.all { it == name || it in opaque })
+                val command = objectAt(action, name)
+                val reply = name == "createCommentReplyAction"
+                val targets = if (reply) setOf("parentCommentId", "replyToCommentId") else emptySet()
+                require(command.fields.keys.all { it == "contents" || it in targets || it in opaque })
+                if (reply) {
+                    require(targets.any(command.fields::containsKey))
+                    for (target in targets) if (command.fields.containsKey(target)) nonblank(command, target)
+                }
+                val contents = objectAt(command, "contents")
+                val renderers = if (reply) setOf("commentThreadRenderer", "commentViewModel")
+                    else setOf("commentRenderer", "commentThreadRenderer", "commentViewModel")
+                require(contents.fields.size == 1 && contents.fields.keys.single() in renderers)
+                created += contents
+            }
+        }
+        require(created.size <= 1)
+        // Only the declared creation result or a direct returned comment can mint a model.
         if (root.fields.keys.any { it in setOf("continuationContents", "onResponseReceivedEndpoints", "onResponseReceivedActions", "onResponseReceivedCommands") }) {
+            require(created.isEmpty())
             return CommentProjection().response(Json.Obj(root.fields.filterKeys { it in opaque || it in setOf("frameworkUpdates", "mutations", "continuationContents", "onResponseReceivedEndpoints", "onResponseReceivedActions", "onResponseReceivedCommands", "createCommentEndpoint", "createCommentParams", "sortFilterSubMenuRenderer") }), false)
         }
         val comments = listOf("commentRenderer", "commentThreadRenderer", "commentViewModel").filter(root.fields::containsKey)
-        require(comments.size <= 1)
-        if (comments.isEmpty()) return obj()
-        val projected = requireNotNull(slot(obj(comments.single() to root.fields.getValue(comments.single()))))
+        require(comments.size + created.size <= 1)
+        val returned = created.singleOrNull() ?: comments.singleOrNull()?.let { obj(it to root.fields.getValue(it)) }
+            ?: return obj()
+        val projected = requireNotNull(slot(returned))
         val fields = linkedMapOf<String, Json>("continuationContents" to obj("itemSectionContinuation" to obj("contents" to arr(listOf(projected)))))
         framework(root)?.let { fields["frameworkUpdates"] = it }
         return Json.Obj(fields)

@@ -162,11 +162,11 @@ class CommentThread @JvmOverloads internal constructor(private val session: Acco
             ?: return@bound discussionError(RequestFailure.UNSUPPORTED, "missing_comment_delete_capability")
         // A returned comment entity alone does not prove that the comment was deleted.
         val reply = requestAction(queryInContext(commentActionQuery(key, context.visitor), context), http,
-            entityScope = ActionEntityScope.None)
-        if (!reply.ok) return@bound ReadResult(error = reply.error)
+            entityScope = ActionEntityScope.None, context = context)
+        if (reply.value == null) return@bound ReadResult(error = reply.error)
         val action = reply.value!!
         if (action.confirmed) entries[handle.entry]?.revision = -1
-        ReadResult(CommentMutation(null, action.state, action.httpStatus))
+        ReadResult(CommentMutation(null, action.state, action.httpStatus), error = reply.error)
     }
 
     @Synchronized internal fun content(handle: CommentHandle): DiscussionComment? =
@@ -197,14 +197,14 @@ class CommentThread @JvmOverloads internal constructor(private val session: Acco
     }
 
     private fun mutation(result: ReadResult<CommentActionReply>, target: CommentHandle?): ReadResult<CommentMutation> {
-        if (!result.ok) return ReadResult(error = result.error)
+        if (result.value == null) return ReadResult(error = result.error)
         val reply = result.value!!
         var delivered = target
         val comment = reply.comment
         if (reply.action.confirmed && comment != null) {
             if (target == null || comment.id == entries[target.entry]?.comment?.id) {
                 val root = jsonObject(reply.action.body)?.let(::ownedCommentMutation)
-                    ?: return ReadResult(CommentMutation(null, reply.action.state, reply.action.httpStatus))
+                    ?: return ReadResult(CommentMutation(null, reply.action.state, reply.action.httpStatus), error = result.error)
                 val previous = target?.let { entries[it.entry] }
                 val id = if (target != null && previous != null) {
                     previous.comment = comment
@@ -213,7 +213,7 @@ class CommentThread @JvmOverloads internal constructor(private val session: Acco
                 delivered = handle(id)
             }
         }
-        return ReadResult(CommentMutation(delivered, reply.action.state, reply.action.httpStatus))
+        return ReadResult(CommentMutation(delivered, reply.action.state, reply.action.httpStatus), error = result.error)
     }
 
     private fun publish(document: DiscussionDocument, context: RequestContext, reset: Boolean,

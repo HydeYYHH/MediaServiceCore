@@ -7,6 +7,40 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class AccountRequestsTest {
+    @Test fun partialMutationAcknowledgementsKeepTheirFailureThroughExecuteCursorAndBoundDelivery() {
+        val session = AccountSession(RequestContext(generation = 8))
+        val acknowledgement = ActionReply("SUCCESS", "{}", ActionState.CONFIRMED, 200)
+        val failure = RequestError(RequestFailure.VERIFICATION, "attestation_required")
+        val result = session.execute { ReadResult(acknowledgement, error = failure) }
+        assertFalse(result.ok)
+        assertSame(acknowledgement, result.value!!.value)
+        assertEquals(8L, result.value!!.generation)
+        assertSame(failure, result.error)
+        val continued = session.execute(result.value!!.cursor("opaque")!!) { _, _ -> ReadResult(acknowledgement, error = failure) }
+        assertFalse(continued.ok)
+        assertSame(acknowledgement, continued.value!!.value)
+        assertSame(failure, continued.error)
+        val bound = session.runBound(8) { ReadResult(acknowledgement, error = failure) }
+        assertFalse(bound.ok)
+        assertSame(acknowledgement, bound.value)
+        assertSame(failure, bound.error)
+    }
+
+    @Test fun identityChangesStillDiscardPartialMutationAcknowledgementsBeforeDelivery() {
+        for (bound in listOf(false, true)) {
+            val session = AccountSession(RequestContext(generation = 8))
+            val operation: (RequestContext) -> ReadResult<String> = {
+                session.clear()
+                ReadResult("old-account-acknowledgement", error = RequestError(RequestFailure.VERIFICATION, "attestation_failed"))
+            }
+            val result = if (bound) session.runBound(8, operation) else session.execute(operation)
+            assertFalse(result.ok)
+            assertNull(result.value)
+            assertEquals(RequestFailure.CANCELLED, result.error!!.kind)
+            assertEquals("session_changed", result.error!!.code)
+        }
+    }
+
     @Test fun cursorRetainsAccountAndRejectsSwitchLogoutAndForeignSession() {
         val session = AccountSession(RequestContext(webSession = WebSession("SAPISID=fixture"), generation = 10))
         val first = session.execute { ReadResult(listOf("first")) }.value!!

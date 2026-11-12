@@ -3,24 +3,49 @@ package com.liskovsoft.youtubeapi.videoinfo.V2
 import java.net.URI
 
 /** Network roles are projected directly; the permissive post fragment parsers never see raw responses. */
-internal fun ownedChannelTabs(root: Json.Obj): List<BrowseTab>? = postOwned(root) { tabs(root).map { it.tab } }
+internal fun ownedChannelTabs(root: Json.Obj, channelId: String? = null): List<BrowseTab>? {
+    val owned = initialChannelPostRoot(root, channelId) ?: return null
+    return postOwned(owned) { tabs(owned).map { it.tab } }
+}
 
-internal fun ownedInitialChannelPosts(root: Json.Obj, channelId: String): PostPage? = postOwned(root) {
-    val selected = tabs(root).singleOrNull { it.tab.selected }
-    if (selected == null || selected.tab.kind != ChannelTabKind.POSTS) emptyPage()
-    else collection(objectAt(selected.source, "content"), channelId)
+internal fun ownedInitialChannelPosts(root: Json.Obj, channelId: String): PostPage? {
+    val owned = initialChannelPostRoot(root, channelId) ?: return null
+    return postOwned(owned) {
+        val selected = tabs(owned).singleOrNull { it.tab.selected }
+        if (selected == null || selected.tab.kind != ChannelTabKind.POSTS) emptyPage()
+        else collection(objectAt(selected.source, "content"), channelId)
+    }
 }
 
 /** This role is used only after the caller requested the channel's POSTS surface. */
-internal fun ownedChannelPosts(root: Json.Obj, channelId: String, continuation: Boolean): PostPage? = postOwned(root) {
-    if (continuation) continued(root, channelId) else {
-        val directTabs = tabs(root)
-        if (hasTabs(root)) {
-            val selected = directTabs.singleOrNull { it.tab.selected }
-            require(selected != null && selected.tab.kind == ChannelTabKind.POSTS)
-            collection(objectAt(selected!!.source, "content"), channelId)
-        } else collection(root, channelId)
+internal fun ownedChannelPosts(root: Json.Obj, channelId: String, continuation: Boolean): PostPage? {
+    val owned = if (continuation) root else initialChannelPostRoot(root, channelId) ?: return null
+    return postOwned(owned) {
+        if (continuation) continued(owned, channelId) else {
+            val directTabs = tabs(owned)
+            if (hasTabs(owned)) {
+                val selected = directTabs.singleOrNull { it.tab.selected }
+                require(selected != null && selected.tab.kind == ChannelTabKind.POSTS)
+                collection(objectAt(selected!!.source, "content"), channelId)
+            } else collection(owned, channelId)
+        }
     }
+}
+
+/** The opening may acknowledge this channel's unread badge without owning another content list. */
+private fun initialChannelPostRoot(root: Json.Obj, channelId: String?): Json.Obj? {
+    val response = root.fields["onResponseReceivedActions"] ?: return root
+    if (channelId == null || !channelId.matches(Regex("UC[A-Za-z0-9_-]{22}")) ||
+        listOf("onResponseReceivedEndpoints", "onResponseReceivedCommands", "continuationContents").any(root.fields::containsKey)) return null
+    val contents = root.obj("contents") ?: return null
+    val layout = contents.obj("twoColumnBrowseResultsRenderer") ?: contents.obj("singleColumnBrowseResultsRenderer") ?: return null
+    if (layout.fields["tabs"] !is Json.Arr) return null
+    val action = (response as? Json.Arr)?.items?.singleOrNull() as? Json.Obj ?: return null
+    if (action.fields.keys.any { it !in setOf("resetChannelUnreadCountCommand", "clickTrackingParams", "trackingParams") }) return null
+    if (listOf("clickTrackingParams", "trackingParams").any { action.fields[it]?.let { field -> field !is Json.Str } == true }) return null
+    val reset = action.obj("resetChannelUnreadCountCommand") ?: return null
+    if (reset.fields.keys != setOf("channelId") || reset.text("channelId") != channelId) return null
+    return Json.Obj(root.fields - "onResponseReceivedActions")
 }
 
 internal fun ownedPostDocument(root: Json.Obj, requestedPostId: String): PostPage? = postOwned(root) {

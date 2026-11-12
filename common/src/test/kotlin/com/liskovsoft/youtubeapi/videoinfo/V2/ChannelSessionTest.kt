@@ -111,6 +111,21 @@ class ChannelSessionTest {
         assertEquals(1, posts.requests.size)
     }
 
+    @Test fun aBareCanonicalHomeEndpointRemainsNavigableWhenAnotherTabWasSelected() {
+        val http = Transport { request, index -> if (index == 0)
+            HttpReply(200, landing(listOf(tab("shorts", true), tab("home", params = null), tab("videos", params = null))))
+        else {
+            val body = jsonObject(request.body)!!
+            assertEquals(id, body.text("browseId")); assertNull(body.text("params")); assertNull(body.text("continuation"))
+            HttpReply(200, page("home-video", continued = false))
+        } }
+        val handle = ChannelSession(AccountSession(), http).open(id).value!!
+        assertEquals("home-video", handle.openTab(ChannelTabKind.HOME).value!!.page.items.single().id)
+        assertEquals("channel_tab_has_no_navigation_capability", handle.openTab(ChannelTabKind.VIDEOS).error?.code)
+        assertEquals(2, http.requests.size)
+        assertFalse(channelTabHasNavigation(BrowseTab("Home", null, null, false, ChannelTabKind.HOME), id))
+    }
+
     @Test fun handleResolutionRejectsOtherResourcesAndDoesNotGuessAnUnavailableRoute() {
         val http = Transport { request, index -> if (index == 0) {
             assertTrue(request.url.endsWith("navigation/resolve_url")); assertEquals("https://www.youtube.com/@lessons", jsonObject(request.body)!!.text("url"))

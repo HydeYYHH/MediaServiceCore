@@ -72,7 +72,10 @@ class ChatPostingTest {
                         return HttpReply(200, """{"actions":[$actions]}""")
                     }
                 })
-            assertNull(result.value)
+            assertFalse(result.ok)
+            assertNotNull(result.value)
+            assertEquals(actions != challenge, result.value!!.confirmed)
+            assertEquals(200, result.value!!.httpStatus)
             assertEquals(RequestFailure.VERIFICATION, result.error?.kind)
             assertEquals("attestation_required", result.error?.code)
             assertEquals(200, result.error?.status)

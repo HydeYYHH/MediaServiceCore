@@ -32,7 +32,7 @@ class ChannelSession @JvmOverloads constructor(private val session: AccountSessi
             if (!parsed.ok) return@runBound ReadResult(error = parsed.error)
             if (parsed.value!!.id != id) return@runBound channelFailure(RequestFailure.PARSE, "channel_identity_mismatch")
             val root = response.value!!
-            val tabs = ownedChannelTabs(root)
+            val tabs = ownedChannelTabs(root, id)
                 ?: return@runBound channelFailure(RequestFailure.PARSE, "unknown_channel_tabs")
             val initialPosts = ownedInitialChannelPosts(root, id)
                 ?: return@runBound channelFailure(RequestFailure.PARSE, "unknown_post_page")
@@ -180,7 +180,9 @@ class ChannelPostsCursor internal constructor(internal val owner: ChannelHandle,
 }
 
 internal fun channelTabHasNavigation(tab: BrowseTab, channelId: String?): Boolean =
-    !tab.params.isNullOrBlank() || tab.browseId?.let { it != channelId && videoIdAccepted(it) } == true
+    !tab.params.isNullOrBlank() ||
+        tab.kind == ChannelTabKind.HOME && channelId != null && tab.browseId == channelId ||
+        tab.browseId?.let { it != channelId && videoIdAccepted(it) } == true
 
 /** Stable protocol identifiers/URL paths only. A translated label is never a route identifier. */
 internal fun channelTabKind(identifier: String?, endpointUrl: String?): ChannelTabKind {

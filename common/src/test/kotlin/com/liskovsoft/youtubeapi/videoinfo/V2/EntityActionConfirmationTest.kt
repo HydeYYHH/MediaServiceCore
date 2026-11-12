@@ -103,6 +103,19 @@ class EntityActionConfirmationTest {
         assertEquals(false, channelPage(body, "UCother").subscribed)
     }
 
+    @Test fun watchSubscriptionUsesItsOwnersLatestEntityAndDoesNotReviveDeletedState() {
+        val owner = ",\"videoDetails\":{\"channelId\":\"$channelId\"},\"subscribeButtonRenderer\":{\"subscribed\":false}"
+        val subscribed = mutation("subscriptionStateEntity", "\"subscribed\":true", channelId, 51)
+        val unrelated = mutation("subscriptionStateEntity", "\"subscribed\":false", "UCother", 51)
+        assertEquals(true, watchPage(response("$subscribed,$unrelated", owner), videoId).subscribed)
+        val deleted = """{"entityKey":"${key(channelId, 51)}","type":"ENTITY_MUTATION_TYPE_DELETE"}"""
+        assertNull(watchPage(response("$subscribed,$deleted", owner), videoId).subscribed)
+        val otherOwner = owner.replace(channelId, "UCother")
+        assertEquals(false, watchPage(response(subscribed, otherOwner), videoId).subscribed)
+        val unsubscribed = mutation("subscriptionStateEntity", "\"subscribed\":false", channelId, 51)
+        assertEquals(false, watchPage(response("$subscribed,$unsubscribed", owner), videoId).subscribed)
+    }
+
     @Test fun legacyUnkeyedInlineFrameworkStateStillReadsButCannotConfirmAWritingAction() {
         val body = """{"frameworkUpdates":{"likeStatusEntity":{"likeStatus":"LIKE"}}}"""
         assertEquals("LIKE", watchPage(body, videoId).rating)

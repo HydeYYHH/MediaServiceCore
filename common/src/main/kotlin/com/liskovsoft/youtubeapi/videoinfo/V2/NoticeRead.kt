@@ -60,7 +60,7 @@ fun markNoticeRead(notice: Notice, context: RequestContext, http: HttpClient = J
 private fun noticeInteraction(token: String, context: RequestContext, http: HttpClient): ReadResult<ActionReply> {
     if (!context.signedIn) return ReadResult(error = RequestError(RequestFailure.AUTH, "sign_in_required"))
     return requestAction(youtubeQuery(YOUTUBE_API + "notification/record_interactions",
-        payload("serializedRecordNotificationInteractionsRequest" to token), context), http, entityScope = ActionEntityScope.None)
+        payload("serializedRecordNotificationInteractionsRequest" to token), context), http, entityScope = ActionEntityScope.None, context = context)
 }
 fun hideNotice(token: String, context: RequestContext, http: HttpClient = JvmHttpClient()): ReadResult<ActionReply> {
     if (token.isBlank()) return ReadResult(error=RequestError(RequestFailure.INVALID,"missing_notification_token"))
@@ -70,7 +70,7 @@ fun setNoticeState(params: String, context: RequestContext, http: HttpClient = J
     if (params.isBlank()) return ReadResult(error = RequestError(RequestFailure.INVALID, "missing_notification_params"))
     if (!context.signedIn) return ReadResult(error = RequestError(RequestFailure.AUTH, "sign_in_required"))
     return requestAction(youtubeQuery(YOUTUBE_API + "notification/modify_channel_preference", payload("params" to params), context),
-        http, entityScope = ActionEntityScope.None)
+        http, entityScope = ActionEntityScope.None, context = context)
 }
 /** Confirms only a replacement button for this channel and this known server-issued preference. */
 fun setNoticeState(channelId: String, state: NoticeState, context: RequestContext,

@@ -75,6 +75,12 @@ internal fun watchPage(root: Json.Obj?, videoId: String?): WatchPage {
     val likeButton = root?.objects("segmentedLikeDislikeButtonViewModel")?.firstOrNull()
         ?.obj("likeButtonViewModel")?.objects("defaultButtonViewModel")?.firstOrNull()?.obj("buttonViewModel")
     val targetVideoId = videoId ?: details?.text("videoId") ?: metadata?.text("videoId")
+    val ownerChannelId = owner?.path("navigationEndpoint", "browseEndpoint")?.text("browseId")
+        ?: owner?.objects("browseEndpoint")?.firstNotNullOfOrNull { it.text("browseId")?.takeIf { id -> id.startsWith("UC") } }
+        ?: owner?.path("subscribeButton", "subscribeButtonRenderer")?.text("channelId") ?: details?.text("channelId")
+    val viewerSubscription = ownerChannelId?.let { channel ->
+        root?.let { viewerEntityState(it, ViewerEntityKind.SUBSCRIPTION, channel) }
+    }
     val viewerRating = root?.let { current ->
         targetVideoId?.let {
             viewerEntityState(current, ViewerEntityKind.RATING, it)
@@ -95,14 +101,13 @@ internal fun watchPage(root: Json.Obj?, videoId: String?): WatchPage {
         owner?.display("title")?.takeIf {
             owner.path("navigationEndpoint", "showEngagementPanelEndpoint") == null
         } ?: metadata?.display("byline") ?: details?.text("author"),
-        owner?.path("navigationEndpoint", "browseEndpoint")?.text("browseId")
-            ?: owner?.objects("browseEndpoint")?.firstNotNullOfOrNull { it.text("browseId")?.takeIf { id -> id.startsWith("UC") } }
-            ?: owner?.path("subscribeButton", "subscribeButtonRenderer")?.text("channelId") ?: details?.text("channelId"), chapters,
+        ownerChannelId, chapters,
         recommendations?.let(::contentItems).orEmpty(), recommendations?.let(::pageKey), root?.let(::commentKey), liveChat?.let(::pageKey),
         readStoryboard(root?.objects("playerStoryboardSpecRenderer")?.firstOrNull()?.text("spec")), queue,
         root?.let { resumeSeconds(it, queue, details?.text("videoId") ?: metadata?.text("videoId") ?: videoId) },
         owner?.thumbnail("thumbnail"),
         rating,
+        if (viewerSubscription != null) viewerSubscription.state?.toBooleanStrictOrNull() else
         controls?.path("subscribeButton", "toggleButtonRenderer")?.bool("isToggled")
             ?: owner?.obj("subscriptionButton")?.bool("subscribed") ?: owner?.bool("subscribed")
             ?: root?.objects("subscribeButtonRenderer")?.firstOrNull()?.bool("subscribed"),

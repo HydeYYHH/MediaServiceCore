@@ -38,7 +38,7 @@ internal fun <T> AccountSession.runBound(generation: Long,
     val captured = snapshot(generation)
     if (!captured.ok) return ReadResult(error = captured.error)
     val result = executeAccountOperation(this, captured.value!!, operation)
-    return if (result.ok) ReadResult(result.value!!.value) else ReadResult(error = result.error)
+    return ReadResult(result.value?.value, error = result.error)
 }
 
 /** Every IO boundary, including enrichment and multi-step reads, keeps the captured identity. */
@@ -57,6 +57,5 @@ private fun <T> executeAccountOperation(session: AccountSession, captured: Reque
     val result = operation(captured)
     val current = session.snapshot(captured.generation)
     if (!current.ok) return ReadResult(error = current.error)
-    return if (result.ok) ReadResult(AccountResult(result.value!!, captured.generation, session))
-        else ReadResult(error = result.error)
+    return ReadResult(result.value?.let { AccountResult(it, captured.generation, session) }, error = result.error)
 }

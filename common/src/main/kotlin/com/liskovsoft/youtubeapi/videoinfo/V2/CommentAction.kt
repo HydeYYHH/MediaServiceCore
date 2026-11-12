@@ -12,13 +12,13 @@ fun performComment(query: PlayerQuery, context: RequestContext, http: HttpClient
 private fun performComment(query: PlayerQuery, context: RequestContext, http: HttpClient,
     entityScope: ActionEntityScope): ReadResult<CommentActionReply> {
     if (!context.signedIn) return ReadResult(error = RequestError(RequestFailure.AUTH, "sign_in_required"))
-    val reply = requestAction(queryInContext(query, context), http, entityScope = entityScope)
-    if (!reply.ok) return ReadResult(error = reply.error)
+    val reply = requestAction(queryInContext(query, context), http, entityScope = entityScope, context = context)
+    if (reply.value == null) return ReadResult(error = reply.error)
     val action = requireNotNull(reply.value)
     val comments = jsonObject(action.body)?.let(::ownedCommentMutation)?.let(::commentPage)?.comments.orEmpty()
     val comment = if (entityScope is ActionEntityScope.Comment) comments.firstOrNull { it.id == entityScope.id }
         else comments.firstOrNull()
-    return ReadResult(CommentActionReply(comment, action))
+    return ReadResult(CommentActionReply(comment, action), error = reply.error)
 }
 fun createComment(text: String?, createKey: String?, context: RequestContext, http: HttpClient = JvmHttpClient()) =
     performComment(createCommentQuery(text, createKey, context.visitor), context, http)
@@ -97,5 +97,5 @@ private fun rateCommentWithIntent(comment: Comment, voteOf: (Comment) -> Comment
         viewerRating = when { liked -> "LIKE"; disliked -> "DISLIKE"; else -> "INDIFFERENT" }, likeCount = entity?.likeCount ?: count,
         likeKey = entity?.likeKey ?: source.likeKey, unlikeKey = entity?.unlikeKey ?: source.unlikeKey,
         dislikeKey = entity?.dislikeKey ?: source.dislikeKey, undislikeKey = entity?.undislikeKey ?: source.undislikeKey)
-    return ReadResult(reply.copy(comment = updated))
+    return ReadResult(reply.copy(comment = updated), error = result.error)
 }

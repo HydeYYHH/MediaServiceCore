@@ -7,8 +7,13 @@ data class RequestContext(
     val accountId: String? = null,
     val visitor: String? = null, val language: String = "en", val region: String = "US",
     val generation: Long = 0, val onBehalfOfUser: String? = null,
-    val webSession: WebSession? = null, val visitorCookie: String? = null
+    val webSession: WebSession? = null, val visitorCookie: String? = null,
+    val actionAttestationProvider: ActionAttestationProvider? = null
 ) {
+    constructor(accountId: String?, visitor: String?, language: String, region: String, generation: Long,
+        onBehalfOfUser: String?, webSession: WebSession?, visitorCookie: String?) :
+        this(accountId, visitor, language, region, generation, onBehalfOfUser, webSession, visitorCookie, null)
+
     init {
         require(onBehalfOfUser?.none { it == '\r' || it == '\n' } != false)
         require(visitorCookie?.none { it == '\r' || it == '\n' } != false)
