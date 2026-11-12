@@ -38,7 +38,7 @@ class WatchQueueTest {
                 assertEquals("PL", body.text("playlistId"))
                 assertEquals(2, body.int("index"))
                 assertEquals("a\"b", body.text("params"))
-                return HttpReply(200, "{}")
+                return HttpReply(200, """{"videoDetails":{"videoId":"v"}}""")
             }
         }
         assertTrue(loadWatch("v", http = http, playlistId = "PL", index = 2, params = "a\"b").ok)

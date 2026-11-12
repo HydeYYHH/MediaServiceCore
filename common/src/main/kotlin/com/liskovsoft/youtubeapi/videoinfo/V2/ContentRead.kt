@@ -5,13 +5,13 @@ internal val contentRenderers = mapOf("videoRenderer" to "video", "gridVideoRend
     "compactVideoRenderer" to "video", "pivotVideoRenderer" to "video", "playlistVideoRenderer" to "video", "reelItemRenderer" to "short",
     "channelRenderer" to "channel", "gridChannelRenderer" to "channel", "compactChannelRenderer" to "channel",
     "playlistRenderer" to "playlist", "gridPlaylistRenderer" to "playlist", "compactPlaylistRenderer" to "playlist",
-    "tileRenderer" to "tile", "lockupViewModel" to "lockup", "shortsLockupViewModel" to "short")
+    "tileRenderer" to "tile", "lockupViewModel" to "lockup", "shortsLockupViewModel" to "short",
+    "postRenderer" to "post", "backstagePostRenderer" to "post")
 
 // Modern cards expose localized display strings instead of viewCountText/publishedTimeText.
 // Compile these once per process, and keep the original server text when identifying a field.
 private val contentViewWords = Regex("(?iu)(\\bviews?\\b|\\bwatching\\b|次观看|次觀看|观看次数|觀看次數|次播放|回視聴|回再生|조회수|visualizaciones|vistas|visualizações|vues|aufrufe|просмотр|مشاهدة)")
 private val contentAgeWords = Regex("(?iu)(\\bago\\b|\\bstreamed\\b|\\bpremiered\\b|\\bpublished\\b|\\byesterday\\b|\\btoday\\b|(?:秒|分钟|分鐘|小时|小時|天|周|週|个月|個月|月|年|時間|日|週間|か月|분|시간|일|주|개월|년)\\s*(?:前|전)|\\bhace\\b|\\bvor\\b|\\bil y a\\b|\\bhá\\b|\\batrás\\b|\\bназад\\b|\\bfa\\b|قبل)")
-private val contentKindLabel = Regex("(?i)^(song|album|episode)$")
 private val contentDuration = Regex("[0-9]+(?::[0-5][0-9]){1,2}")
 
 private fun String.isContentViewCount() =
@@ -29,6 +29,38 @@ private fun Json.Obj.isContentViews(): Boolean =
 private fun Json.Obj.isContentPublished(): Boolean =
     listOfNotNull(contentText("text"), text("accessibilityLabel"), obj("text")?.text("accessibilityLabel"))
         .any { it.isContentAge() }
+
+/** An explicit single-author image role, not an avatar found elsewhere in generic metadata. */
+private fun ownsMetadataAuthorAvatar(item: Json.Obj, metadata: Json.Obj?): Boolean = runCatching {
+    // Parallel avatar roles cannot establish that an unlinked row names the same single author.
+    require("avatar" !in item.fields && "avatarStackViewModel" !in item.fields)
+    fun role(node: Json.Obj) {
+        require("avatarStackViewModel" !in node.fields)
+        if ("commandMetadata" !in node.fields) return
+        val command = node.obj("commandMetadata") ?: error("avatar command")
+        if ("webCommandMetadata" !in command.fields) return
+        val web = command.obj("webCommandMetadata") ?: error("avatar web command")
+        if ("apiUrl" in web.fields) require(web.text("apiUrl") == "/youtubei/v1/browse")
+    }
+    val owner = metadata ?: return@runCatching false
+    role(owner)
+    val image = owner.obj("image") ?: return@runCatching false
+    role(image)
+    val wrappers = listOf("avatarViewModel", "decoratedAvatarViewModel").filter(image.fields::containsKey)
+    require(wrappers.size == 1)
+    val avatar = if (wrappers.single() == "avatarViewModel") image.obj("avatarViewModel") ?: error("avatar")
+    else {
+        val decorated = image.obj("decoratedAvatarViewModel") ?: error("decorated avatar")
+        role(decorated)
+        val container = decorated.obj("avatar") ?: error("avatar container")
+        role(container)
+        container.obj("avatarViewModel") ?: error("avatar")
+    }
+    role(avatar)
+    val artwork = avatar.obj("image") ?: return@runCatching false
+    role(artwork)
+    readArtwork(artwork) != null
+}.getOrDefault(false)
 
 internal fun contentItems(root: Json): List<MediaItem> {
     val result = ArrayList<MediaItem>()
@@ -57,6 +89,7 @@ internal fun contentItems(root: Json): List<MediaItem> {
             duration = first.duration?.takeIf(String::isNotBlank) ?: item.duration,
             channelId = first.channelId?.takeIf(String::isNotBlank) ?: item.channelId,
             authorThumbnail = first.authorThumbnail?.takeIf(String::isNotBlank) ?: item.authorThumbnail,
+            authorArtwork = first.authorArtwork ?: item.authorArtwork,
             viewCount = first.viewCount?.takeIf(String::isNotBlank) ?: item.viewCount,
             published = first.published?.takeIf(String::isNotBlank) ?: item.published,
         )
@@ -66,6 +99,20 @@ internal fun contentItems(root: Json): List<MediaItem> {
 
 private fun contentItem(type: String, item: Json.Obj): MediaItem? {
     if (item.isAdvertisement()) return null
+    if (contentRenderers[type] == "post") {
+        val post = postItem(item, null) ?: return null
+        if (!postIdAccepted(post.postId)) return null
+        val image = post.images.firstNotNullOfOrNull(::artworkUrl)
+        val poll = post.poll
+        val rawPoll = item.obj("backstageAttachment")?.objects("pollRenderer")?.singleOrNull()
+        val displayablePoll = poll != null && poll.choices.size >= 2 &&
+            rawPoll?.arr("choices")?.size == poll.choices.size &&
+            poll.choices.all { it.text.isNotBlank() || artworkUrl(it.image) != null }
+        if (post.text.isNullOrBlank() && image == null && !displayablePoll) return null
+        return MediaItem("post", post.postId, post.text, post.author, image, null, channelId = post.authorId,
+            endpoint = actionEndpoint(item.obj("navigationEndpoint")), published = post.published,
+            authorThumbnail = post.authorAvatar, authorArtwork = readArtwork(item.obj("authorThumbnail")), post = post)
+    }
     val command = item.obj("navigationEndpoint") ?: item.obj("onSelectCommand") ?: item.path("onTap", "innertubeCommand")
         ?: item.path("rendererContext", "commandContext", "onTap", "innertubeCommand")
     val watch = command?.obj("watchEndpoint") ?: command?.obj("reelWatchEndpoint")
@@ -105,18 +152,14 @@ private fun contentItem(type: String, item: Json.Obj): MediaItem? {
     val rowParts = (rows + entityRows).map { row ->
         ((row as? Json.Obj)?.fields?.get("metadataParts") as? Json.Arr)?.items.orEmpty().mapNotNull { it as? Json.Obj }
     }
-    // TV music/video lockups also carry an unlinked author row, without an avatar.
-    // Keep stats-only lockups from turning a view count or publication age into an author.
+    // Generic metadata rows are not author roles. A first-row label needs an explicit author
+    // link or the same metadata's single-author avatar; a non-stat string alone is insufficient.
     val firstRow = rowParts.firstOrNull().orEmpty()
-    val firstText = firstRow.singleOrNull()?.display("text")
-    val plainAuthor = type == "lockupViewModel" && kind == "video" && !firstText.isNullOrBlank() &&
-        !firstText.isContentViewCount() && !firstText.isContentAge() && !contentKindLabel.matches(firstText) &&
-        firstRow.single().objects("leadingIcon").isEmpty()
     val linkedAuthor = firstRow.firstOrNull { part ->
         part.objects("browseEndpoint").any { it.text("browseId")?.startsWith("UC") == true }
     }
     val authorPart = linkedAuthor ?: firstRow.firstOrNull()?.takeIf {
-        (metadata?.objects("avatarViewModel")?.isNotEmpty() == true || plainAuthor) &&
+        ownsMetadataAuthorAvatar(item, metadata) &&
             !it.isContentViews() && !it.isContentPublished()
     }
     val author = authorPart?.contentText("text")
@@ -129,6 +172,12 @@ private fun contentItem(type: String, item: Json.Obj): MediaItem? {
         ?: item.path("contentImage", "collectionThumbnailViewModel", "primaryThumbnail", "thumbnailViewModel")
     val badges = image?.objects("thumbnailBadgeViewModel").orEmpty().ifEmpty { item.objects("thumbnailBadgeViewModel") }
     val timeOverlays = item.objects("thumbnailOverlayTimeStatusRenderer")
+    // WEB search cards publish live status on the video badge, independently of owner verification.
+    val metadataLive = item.arr("badges").any { badge ->
+        val metadataBadge = (badge as? Json.Obj)?.obj("metadataBadgeRenderer")
+        metadataBadge?.text("style") == "BADGE_STYLE_TYPE_LIVE_NOW" ||
+            metadataBadge?.obj("icon")?.text("iconType") == "LIVE"
+    }
     val duration = badges.firstNotNullOfOrNull { it.text("text")?.takeIf(contentDuration::matches) }
         ?: timeOverlays.firstNotNullOfOrNull { overlay ->
             overlay.contentText("text")?.takeIf { contentDuration.matches(it) || overlay.text("style") == "LIVE" }
@@ -136,6 +185,18 @@ private fun contentItem(type: String, item: Json.Obj): MediaItem? {
     val secondaryText = item.obj("overlayMetadata")?.contentText("secondaryText")
     val progress = item.objects("thumbnailOverlayResumePlaybackRenderer").firstOrNull()?.int("percentDurationWatched")
         ?: item.objects("thumbnailOverlayProgressBarViewModel").firstOrNull()?.int("startPercent")
+    val avatarStack = item.path("avatar", "avatarStackViewModel")?.arr("avatars").orEmpty()
+    val singleStackImage = (avatarStack.singleOrNull() as? Json.Obj)?.path("avatarViewModel", "image")
+    val authorImages = listOfNotNull(item.obj("channelThumbnail")) +
+        item.objects("channelThumbnailWithLinkRenderer").mapNotNull { it.obj("thumbnail") } +
+        metadata?.objects("avatarViewModel").orEmpty().mapNotNull { it.obj("image") } +
+        item.objects("decoratedAvatarViewModel").mapNotNull { it.path("avatar", "avatarViewModel", "image") } +
+        bylines.firstOrNull().orEmpty().mapNotNull { it.obj("thumbnail") } + listOfNotNull(singleStackImage)
+    val authorArtwork = if (avatarStack.size > 1) null else authorImages.firstNotNullOfOrNull(::readArtwork)
+    val legacyAuthorThumbnail = if (avatarStack.size > 1) null else authorImages.firstNotNullOfOrNull { image ->
+        (image.arr("thumbnails") + image.arr("sources")).mapNotNull { (it as? Json.Obj)?.text("url") }
+            .lastOrNull { it.isNotBlank() }
+    }
     return MediaItem(kind, id, item.contentText("title") ?: item.contentText("headline") ?: metadata?.contentText("title")
         ?: item.obj("overlayMetadata")?.contentText("primaryText") ?: carousel?.contentText("title"),
         item.contentText("ownerText") ?: item.contentText("shortBylineText") ?: item.contentText("longBylineText")
@@ -144,16 +205,13 @@ private fun contentItem(type: String, item: Json.Obj): MediaItem? {
         item.thumbnail("thumbnail") ?: item.path("header", "tileHeaderRenderer")?.thumbnail("thumbnail") ?: image?.thumbnail("image")
             ?: if (kind == "short") "https://i.ytimg.com/vi/$id/hqdefault.jpg" else null,
         item.contentText("lengthText") ?: duration,
-        item.text("channelId") ?: item.objects("browseEndpoint").mapNotNull { it.text("browseId") }.firstOrNull { it.startsWith("UC") },
+        item.text("channelId") ?: if (avatarStack.size > 1) null else
+            item.objects("browseEndpoint").mapNotNull { it.text("browseId") }.firstOrNull { it.startsWith("UC") },
         item.text("playlistId") ?: watch?.text("playlistId"), browse?.text("params"),
         actionEndpoint(command), pageActions(item), watch?.long("startTimeSeconds"), progress?.coerceIn(0, 100),
-        badges.any { it.text("badgeStyle")?.contains("LIVE") == true } || timeOverlays.any { it.text("style") == "LIVE" },
+        metadataLive || badges.any { it.text("badgeStyle")?.contains("LIVE") == true } || timeOverlays.any { it.text("style") == "LIVE" },
         watch?.text("playerParams"),
-        item.thumbnail("channelThumbnail")
-            ?: item.objects("channelThumbnailWithLinkRenderer").firstNotNullOfOrNull { it.thumbnail("thumbnail") }
-            ?: metadata?.objects("avatarViewModel")?.firstNotNullOfOrNull { it.thumbnail("image") }
-            ?: item.objects("decoratedAvatarViewModel").firstNotNullOfOrNull { it.path("avatar", "avatarViewModel")?.thumbnail("image") }
-            ?: bylines.firstOrNull()?.firstNotNullOfOrNull { it.thumbnail("thumbnail") },
+        authorArtwork?.best?.url ?: legacyAuthorThumbnail,
         item.contentText("viewCountText") ?: item.contentText("shortViewCountText") ?: views
             ?: secondaryText?.takeIf { it.isContentViewCount() } ?: tileLines.flatten().firstOrNull { it.isContentViewCount() }
             ?: carouselStats.firstNotNullOfOrNull { it.contentText("text")?.takeIf { text -> text.isContentViewCount() } },
@@ -167,7 +225,7 @@ private fun contentItem(type: String, item: Json.Obj): MediaItem? {
             val tag = panel.path("identifier")?.text("tag")
             val params = panel.path("globalConfiguration")?.text("params")
             if (tag.isNullOrBlank() || params.isNullOrBlank()) null else MenuEndpoint(tag, params)
-        } else null)
+        } else null, authorArtwork = authorArtwork)
 }
 
 internal fun pageGroups(root: Json): List<MediaGroup> {

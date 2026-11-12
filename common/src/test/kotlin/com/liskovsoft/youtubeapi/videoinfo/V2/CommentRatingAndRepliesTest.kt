@@ -4,7 +4,7 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class CommentRatingAndRepliesTest {
-    private val signedIn = RequestContext(accessToken = "access", generation = 7)
+    private val signedIn = RequestContext(webSession = WebSession("SAPISID=access"), generation = 7)
 
     private fun tvComment(count: String = "2") = commentPage("""{
       "commentThreadRenderer":{"comment":{"commentRenderer":{
@@ -90,8 +90,8 @@ class CommentRatingAndRepliesTest {
             val http = object : HttpClient {
                 override fun execute(request: HttpRequest): HttpReply {
                     requests += request
-                    assertEquals("Bearer access", request.headers["Authorization"])
-                    assertTrue(request.body.contains("\"clientName\":\"TVHTML5\""))
+                    assertTrue(request.headers["Authorization"]!!.startsWith("SAPISIDHASH "))
+                    assertTrue(request.body.contains("\"clientName\":\"WEB\""))
                     return if (requests.size == 1) {
                         assertTrue(request.body.contains("\"continuation\":\"detail\""))
                         HttpReply(200, detail(liked = like && selected, disliked = !like && selected))

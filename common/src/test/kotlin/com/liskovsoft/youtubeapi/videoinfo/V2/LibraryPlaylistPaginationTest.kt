@@ -4,7 +4,7 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class LibraryPlaylistPaginationTest {
-    private val context = RequestContext("owner", "token")
+    private val context = RequestContext(accountId = "owner", webSession = WebSession("SAPISID=token"))
 
     private fun load(body: String, continuation: String? = null): BrowsePage {
         val http = object : HttpClient {

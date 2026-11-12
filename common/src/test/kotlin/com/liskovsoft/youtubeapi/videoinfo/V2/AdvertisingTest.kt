@@ -31,7 +31,7 @@ class AdvertisingTest {
                 {"guideEntryRenderer":{"navigationEndpoint":{"browseEndpoint":{"browseId":"UCread"}},"isNewContent":false}}
             ]}""")
         }
-        val channels = loadSubscribedChannels(RequestContext(accessToken = "test"), http).value.orEmpty()
+        val channels = loadSubscribedChannels(RequestContext(webSession = WebSession("SAPISID=test")), http).value.orEmpty()
         assertEquals(listOf(true, false), channels.map { it.hasNewContent })
     }
 }

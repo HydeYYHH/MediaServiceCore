@@ -28,21 +28,23 @@ class SubscriptionChannelsTest {
             ${style?.let { ",\"presentationStyle\":{\"style\":\"$it\"}" }.orEmpty()}}
     }"""
 
-    @Test fun oauthDirectoryReadsSubscriptionTabsWithChannelIdentityAndServerUpdateFlags() {
+    @Test fun anOpenedWebSubscriptionBrowseSuppliesChannelIdentityAndServerUpdateFlags() {
         var calls = 0
         val http = object : HttpClient {
             override fun execute(request: HttpRequest): HttpReply {
                 calls++
                 assertTrue(request.url.contains("browse"))
                 assertEquals("FEsubscriptions", jsonObject(request.body)!!.text("browseId"))
-                assertEquals("Bearer token", request.headers["Authorization"])
+                assertEquals("SAPISID=token", request.headers["Cookie"])
                 return HttpReply(200, response(
                     tab("FEsubscriptions", title = "All") + "," +
                         tab("FEsubscriptions", "NEW_CONTENT", capturedParams) + "," +
                         tab("UCother", renderer = "expandableTabRenderer")))
             }
         }
-        val page = loadSubscribedChannelsPage(RequestContext(accessToken = "token"), http = http).value!!
+        val context = RequestContext(webSession = WebSession("SAPISID=token"))
+        val opened = loadSubscriptionsBrowse(context, http).value!!
+        val page = loadSubscribedChannelsPage(context, opened, http).value!!
         assertEquals(listOf(channelId, "UCother"), page.channels.map { it.id })
         assertEquals(listOf(true, false), page.channels.map { it.hasNewContent })
         assertEquals(listOf("Same name", "Same name"), page.channels.map { it.title })
@@ -54,7 +56,7 @@ class SubscriptionChannelsTest {
 
     @Test fun duplicateTabsKeepTheirUpdateFlagAndUnrelatedTabsNeverBecomeSubscriptions() {
         val root = jsonObject(response(tab("UCsame") + "," + tab("UCsame", "NEW_CONTENT") + "," +
-            tab("FEtrending", "NEW_CONTENT", capturedParams) + "," + tab("UCseen", "DEFAULT"),
+            tab("FEtopics_music", "NEW_CONTENT", capturedParams) + "," + tab("UCseen", "DEFAULT"),
             "twoColumnBrowseResultsRenderer"))!!
         assertEquals(listOf("UCsame", "UCseen"), subscriptionChannelTabs(root).map { it.id })
         assertEquals(listOf(true, false), subscriptionChannelTabs(root).map { it.hasNewContent })
@@ -83,10 +85,11 @@ class SubscriptionChannelsTest {
             override fun execute(request: HttpRequest): HttpReply {
                 calls++
                 assertEquals("cursor", jsonObject(request.body)!!.text("continuation"))
-                return HttpReply(200, """{"channelRenderer":{"channelId":"UCnext","title":{"simpleText":"Next"}}}""")
+                return HttpReply(200, """{"continuationContents":{"gridContinuation":{"items":[
+                    {"channelRenderer":{"channelId":"UCnext","title":{"simpleText":"Next"}}}]}}}""")
             }
         }
-        val page = loadSubscribedChannelsPage(RequestContext(accessToken = "token"), "cursor", http).value!!
+        val page = loadSubscribedChannelsPage(RequestContext(webSession = WebSession("SAPISID=token")), "cursor", http).value!!
         assertEquals("UCnext", page.channels.single().id)
         assertEquals(1, calls)
     }
@@ -102,7 +105,7 @@ class SubscriptionChannelsTest {
                     "presentationStyle":"GUIDE_ENTRY_PRESENTATION_STYLE_DEFAULT"}}
             ]}""")
         }
-        val page = loadSubscribedChannelsPage(RequestContext(accessToken = "token"), http = http).value!!
+        val page = loadSubscribedChannelsPage(RequestContext(webSession = WebSession("SAPISID=token")), http = http).value!!
         assertEquals(listOf("UCnew", "UCseen"), page.channels.map { it.id })
         assertEquals(listOf(true, false), page.channels.map { it.hasNewContent })
         assertNull("A channel-home parameter must not become a subscription feed filter", page.channels.first().params)

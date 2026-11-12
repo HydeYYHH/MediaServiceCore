@@ -39,12 +39,12 @@ class WatchHistorySessionTest {
         assertEquals("11.0", param(requests[1].url, "et"))
     }
 
-    @Test fun bearerWinsAndRejectedOriginsNeverReceiveCredentials() {
+    @Test fun visitorCookiesNeverReplaceAccountCredentialsAndRejectedOriginsNeverReceiveThem() {
         val requests = mutableListOf<HttpRequest>()
         val http = captureHttp(requests)
-        val context = RequestContext(accessToken = "token", webSession = WebSession("SAPISID=secret"))
+        val context = RequestContext(webSession = WebSession("SAPISID=secret"), visitorCookie = "VISITOR_INFO1_LIVE=visitor", onBehalfOfUser = "brand")
         assertTrue(WatchHistory(http).update("aqz-KE-bpKQ", 1000, 100_000, tracking, context).ok)
-        assertTrue(requests.all { it.headers == mapOf("Authorization" to "Bearer token") })
+        assertTrue(requests.all { it.headers["Cookie"] == "SAPISID=secret" && it.headers["X-Goog-PageId"] == "brand" })
         requests.clear()
         for (base in listOf("https://www.youtube.com.evil.test/api/stats/playback", "https://user@www.youtube.com/api/stats/playback",
             "https://www.youtube.com:444/api/stats/playback", "http://www.youtube.com/api/stats/playback")) {
@@ -55,15 +55,15 @@ class WatchHistorySessionTest {
         assertTrue(requests.isEmpty())
     }
 
-    @Test fun tokenRefreshKeepsTheSessionAndTheLedger() {
+    @Test fun cookieRenewalKeepsTheSessionAndTheLedger() {
         val requests = mutableListOf<HttpRequest>()
         val http = captureHttp(requests)
         val history = WatchHistory(http)
-        val first = RequestContext(accessToken = "token-a", accountId = "id1")
+        val first = RequestContext(webSession = WebSession("SAPISID=token-a"), accountId = "id1")
         assertTrue(history.update("aqz-KE-bpKQ", 1000, 100_000, tracking, first).ok)
         assertEquals(1, requests.size)
-        // The token rotated underneath the same account: the session continues.
-        val refreshed = RequestContext(accessToken = "token-b", accountId = "id1")
+        // Cookies rotated underneath the same account: the session continues.
+        val refreshed = RequestContext(webSession = WebSession("SAPISID=token-b"), accountId = "id1")
         assertTrue(history.update("aqz-KE-bpKQ", 11_000, 100_000, tracking, refreshed).ok)
         assertEquals(2, requests.size)
         assertTrue(requests[1].url.contains("/api/stats/watchtime"))
@@ -76,7 +76,7 @@ class WatchHistorySessionTest {
         val requests = mutableListOf<HttpRequest>()
         val http = captureHttp(requests)
         val history = WatchHistory(http)
-        val context = RequestContext(accessToken = "token")
+        val context = RequestContext(webSession = WebSession("SAPISID=token"))
         assertTrue(history.update("aqz-KE-bpKQ", 1000, 100_000, tracking, context).ok)
         assertTrue(history.update("dQw4w9WgXcQ", 2000, 20000, tracking, context).ok)
         assertEquals(2, requests.size)
@@ -91,7 +91,7 @@ class WatchHistorySessionTest {
         val requests = mutableListOf<HttpRequest>()
         val http = captureHttp(requests)
         val history = WatchHistory(http)
-        val context = RequestContext(accessToken = "token")
+        val context = RequestContext(webSession = WebSession("SAPISID=token"))
         assertTrue(history.update("aqz-KE-bpKQ", 1000, 100_000, tracking, context).ok)
         assertEquals(1, requests.size)
         // Paused: the same position twice carries no interval.
@@ -113,7 +113,7 @@ class WatchHistorySessionTest {
         val requests = mutableListOf<HttpRequest>()
         val http = captureHttp(requests)
         val history = WatchHistory(http)
-        val context = RequestContext(accessToken = "token")
+        val context = RequestContext(webSession = WebSession("SAPISID=token"))
         val broken = tracking.copy(watchTimeUrl = "https://www.youtube.com.evil.test/api/stats/watchtime")
         assertTrue(history.update("aqz-KE-bpKQ", 1000, 100_000, broken, context).ok)
         assertEquals(1, requests.size)

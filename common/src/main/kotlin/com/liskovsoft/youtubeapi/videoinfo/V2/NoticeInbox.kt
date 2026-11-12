@@ -2,10 +2,6 @@ package com.liskovsoft.youtubeapi.videoinfo.V2
 
 private const val MENU_URL =
     "https://www.youtube.com/youtubei/v1/notification/get_notification_menu?prettyPrint=false"
-private const val HIDE_URL =
-    "https://www.youtube.com/youtubei/v1/notification/record_interactions?prettyPrint=false"
-private const val STATE_URL =
-    "https://www.youtube.com/youtubei/v1/notification/modify_channel_preference?prettyPrint=false"
 
 data class Notice(
     val videoId: String?,
@@ -14,14 +10,35 @@ data class Notice(
     val title: String?,
     val published: String?,
     val thumbnail: String?,
-    val hideKey: String?
+    val hideKey: String?,
+    val id: String? = null,
+    val read: Boolean? = null,
+    val readCommand: NoticeCommand? = null
 )
 
-data class NoticeState(
+/** Only parsed first-party notification interaction commands can mark a notification read. */
+class NoticeCommand internal constructor(internal val interactions: String) {
+    override fun toString() = "NoticeCommand(record_interactions)"
+}
+
+internal fun noticeReadCommand(node: Json.Obj?): NoticeCommand? {
+    node ?: return null
+    val command = node.obj("innertubeCommand") ?: node
+    // Wrapping a command must not discard a conflicting outer endpoint declaration.
+    if (listOf(node, command).any {
+        val endpoint = it.path("commandMetadata", "webCommandMetadata")?.text("apiUrl")
+        endpoint != null && endpoint.substringBefore('?') != "/youtubei/v1/notification/record_interactions"
+    }) return null
+    return command.obj("recordNotificationInteractionsEndpoint")?.text("serializedInteractionsRequest")
+        ?.takeIf(String::isNotBlank)?.let(::NoticeCommand)
+}
+
+data class NoticeState @JvmOverloads constructor(
     val title: String?,
     val stateId: Int?,
     val params: String,
-    val selected: Boolean
+    val selected: Boolean,
+    val disabled: Boolean = false
 )
 
 fun noticeQuery(visitor: String?): PlayerQuery {
@@ -41,66 +58,33 @@ fun notices(body: String): List<Notice> {
             parts.second,
             displayText(renderer.obj("sentTimeText")),
             firstThumbnail(renderer.obj("videoThumbnail")),
-            hideKey(renderer.obj("contextualMenu"))
+            hideKey(renderer.obj("contextualMenu")),
+            renderer.text("notificationId"), renderer.bool("read"),
+            noticeReadCommand(renderer.obj("recordClickEndpoint"))
         ))
     }
     return parsed
 }
 
-fun loadNotices(visitor: String?, post: (PlayerQuery) -> Pair<Int, String>): List<Notice> {
-    val http = try {
-        post(noticeQuery(visitor))
-    } catch (failure: Exception) {
-        return emptyList()
-    }
-    if (http.first != 200) return emptyList()
-    return notices(http.second)
-}
-
-fun hideNotice(token: String?, visitor: String?, post: (PlayerQuery) -> Pair<Int, String>): Boolean {
-    if (token.isNullOrEmpty()) return false
-    val query = webQuery(
-        HIDE_URL,
-        """"serializedRecordNotificationInteractionsRequest":"${escapeJson(token)}"""",
-        visitor
-    )
-    return posted(query, post)
-}
-
 fun noticeStates(body: String): List<NoticeState> {
     val root = jsonObject(body) ?: return emptyList()
+    modernNoticeStates(root)?.let { return it }
     val button = findButton(root) ?: return emptyList()
     val current = wholeNumber(button, "currentStateId")
     val states = button.fields["states"] as? Json.Arr ?: return emptyList()
     val parsed = ArrayList<NoticeState>()
     for (item in states.items) {
         val state = item as? Json.Obj ?: continue
-        val params = state.obj("inlineMenuButton")
-            ?.obj("buttonRenderer")
-            ?.obj("serviceEndpoint")
-            ?.obj("modifyChannelNotificationPreferenceEndpoint")
-            ?.text("params")
-            ?.takeIf { it.isNotEmpty() } ?: continue
+        val renderer = state.path("inlineMenuButton", "buttonRenderer") ?: continue
+        val params = noticePreferenceParams(renderer.obj("serviceEndpoint")) ?: continue
         val stateId = wholeNumber(state, "stateId")
         val title = displayText(state.obj("inlineMenuButton")?.obj("buttonRenderer")?.obj("text"))
-        parsed.add(NoticeState(title, stateId, params, stateId != null && stateId == current))
+        parsed.add(NoticeState(title, stateId, params, stateId != null && stateId == current,
+            !noticeBooleanFlagsKnown(button, "isDisabled") || !noticeBooleanFlagsKnown(state, "isDisabled") ||
+                !noticeBooleanFlagsKnown(renderer, "isDisabled") || button.bool("isDisabled") == true ||
+                state.bool("isDisabled") == true || renderer.bool("isDisabled") == true))
     }
     return parsed
-}
-
-fun setNoticeState(params: String?, visitor: String?, post: (PlayerQuery) -> Pair<Int, String>): Boolean {
-    if (params.isNullOrBlank()) return false
-    return posted(webQuery(STATE_URL, """"params":"${escapeJson(params)}"""", visitor), post)
-}
-
-private fun posted(query: PlayerQuery, post: (PlayerQuery) -> Pair<Int, String>): Boolean {
-    if (query.url.isEmpty()) return false
-    val http = try {
-        post(query)
-    } catch (failure: Exception) {
-        return false
-    }
-    return http.first == 200
 }
 
 private fun splitMessage(message: String?): Pair<String?, String?> {
@@ -160,5 +144,3 @@ private fun wholeNumber(node: Json.Obj, name: String): Int? {
     if (digits.isEmpty() || digits.any { it !in '0'..'9' }) return null
     return text.toIntOrNull()
 }
-
-private fun escapeJson(value: String): String = jsonEscape(value)

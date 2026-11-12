@@ -15,7 +15,7 @@ private fun performComment(query: PlayerQuery, context: RequestContext, http: Ht
     val reply = requestAction(queryInContext(query, context), http, entityScope = entityScope)
     if (!reply.ok) return ReadResult(error = reply.error)
     val action = requireNotNull(reply.value)
-    val comments = commentPage(action.body).comments
+    val comments = jsonObject(action.body)?.let(::ownedCommentMutation)?.let(::commentPage)?.comments.orEmpty()
     val comment = if (entityScope is ActionEntityScope.Comment) comments.firstOrNull { it.id == entityScope.id }
         else comments.firstOrNull()
     return ReadResult(CommentActionReply(comment, action))

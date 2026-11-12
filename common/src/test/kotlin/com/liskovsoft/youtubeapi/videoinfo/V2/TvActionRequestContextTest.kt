@@ -12,9 +12,9 @@ class TvActionRequestContextTest {
         }
     }
 
-    @Test fun oauthVideoAndSubscriptionWritesUseTheTvActionContext() {
+    @Test fun cookieVideoAndSubscriptionWritesUseWebWithoutTvActionDefaults() {
         val http = Capture()
-        val context = RequestContext(accountId = "account", accessToken = "fixture-token", language = "zh", region = "TW")
+        val context = RequestContext(accountId = "account", webSession = WebSession("SAPISID=fixture-token"), language = "zh", region = "TW")
         assertTrue(voteVideo("abcdefghijk", VideoVote.LIKE, context, http).ok)
         assertTrue(subscribeChannel("UCabcdefghijk", true, context, http = http).ok)
         assertEquals(2, http.requests.size)
@@ -24,19 +24,16 @@ class TvActionRequestContextTest {
             val root = requireNotNull(jsonObject(request.body))
             val client = requireNotNull(root.path("context", "client"))
             assertEquals("POST", request.method)
-            assertEquals("TVHTML5", client.text("clientName"))
-            assertEquals("7", request.headers["X-Youtube-Client-Name"])
+            assertEquals("WEB", client.text("clientName"))
+            assertEquals("1", request.headers["X-Youtube-Client-Name"])
             assertEquals(request.headers["X-Youtube-Client-Version"], client.text("clientVersion"))
-            assertEquals("WATCH", client.text("clientScreen"))
-            assertEquals(request.headers["User-Agent"], client.text("userAgent"))
-            assertEquals("zh", client.text("acceptLanguage"))
-            assertEquals("TW", client.text("acceptRegion"))
-            assertEquals(false, root.path("context", "user")?.bool("enableSafetyMode"))
-            assertEquals(false, root.path("context", "user")?.bool("lockedSafetyMode"))
-            assertEquals(true, root.bool("racyCheckOk"))
-            assertEquals(true, root.bool("contentCheckOk"))
-            assertEquals("Bearer fixture-token", request.headers["Authorization"])
-            assertNull(request.headers["Cookie"])
+            assertEquals("zh", client.text("hl"))
+            assertEquals("TW", client.text("gl"))
+            assertNull(client.text("clientScreen"))
+            assertNull(client.text("acceptLanguage"))
+            assertNull(root.path("context", "user"))
+            assertTrue(request.headers["Authorization"]!!.startsWith("SAPISIDHASH "))
+            assertEquals("SAPISID=fixture-token", request.headers["Cookie"])
             assertNull(request.headers["X-Goog-PageId"])
         }
         assertEquals("abcdefghijk", jsonObject(http.requests[0].body)?.obj("target")?.text("videoId"))
@@ -81,7 +78,7 @@ class TvActionRequestContextTest {
 
     @Test fun readAndPlayerQueriesDoNotGainActionOnlyContext() {
         val http = Capture()
-        val context = RequestContext(accountId = "account", accessToken = "fixture-token")
+        val context = RequestContext(accountId = "account", webSession = WebSession("SAPISID=fixture-token"))
         val read = youtubeQuery(YOUTUBE_API + "browse", "\"browseId\":\"FEsubscriptions\"", context)
         val player = contextualQuery(playerQuery(PlayerClient.TV, "abcdefghijk", null), context)
         assertTrue(requestObject(read, http).ok)

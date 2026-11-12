@@ -8,11 +8,11 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** Normalized shapes from docs/validation/{probe-shorts-initial,watch-fix-next}.json. */
+/** Action responses with explicit status and target-bound entity updates. */
 class EntityActionConfirmationTest {
     private val videoId = "abcdefghijk"
     private val channelId = "UCabcdefghijklmnopqrstuv"
-    private val context = RequestContext(accessToken = "fixture-token")
+    private val context = RequestContext(webSession = WebSession("SAPISID=fixture-token"))
 
     private fun key(id: String, kind: Int) = URLEncoder.encode(Base64.getEncoder().encodeToString(
         byteArrayOf(18, id.length.toByte()) + id.toByteArray(Charsets.UTF_8) + byteArrayOf(32, kind.toByte(), 40, 1)), "UTF-8")

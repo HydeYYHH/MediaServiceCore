@@ -11,7 +11,7 @@ class PageReadTest {
         assertEquals("unknown_browse_page", loadBrowse("home", http = http).error!!.code)
         body = "{\"contents\":[]}"
         assertTrue(loadBrowse("home", http = http).ok)
-        body = "{\"messageRenderer\":{\"text\":{\"simpleText\":\"No results\"}}}"
+        body = """{"contents":{"twoColumnSearchResultsRenderer":{"primaryContents":{"sectionListRenderer":{"contents":[{"messageRenderer":{"text":{"simpleText":"No results"}}}]}}}}}"""
         assertEquals(listOf("No results"), loadSearch("q", http = http).value!!.messages)
         body = "{"
         assertEquals(RequestFailure.PARSE, loadSearch("q", http = http).error!!.kind)

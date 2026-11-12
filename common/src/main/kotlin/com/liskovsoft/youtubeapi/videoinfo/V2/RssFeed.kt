@@ -2,19 +2,41 @@ package com.liskovsoft.youtubeapi.videoinfo.V2
 
 import org.w3c.dom.Element
 import javax.xml.parsers.DocumentBuilderFactory
+import javax.xml.parsers.ParserConfigurationException
+import org.xml.sax.SAXException
 
 data class RssVideo(val videoId:String,val channelId:String?,val title:String?,val author:String?,val published:String?,val thumbnail:String?)
 data class RssFeed(val videos:List<RssVideo>,val failures:Map<String,RequestError>)
 fun rssVideos(body:String):ReadResult<List<RssVideo>> {
+    return try { parseRssVideos(body, DocumentBuilderFactory.newInstance()) }
+    catch (_: Exception) { invalidRss() }
+}
+
+/** Factory injection keeps Android's unsupported optional JAXP controls testable on the JVM. */
+internal fun parseRssVideos(body: String, factory: DocumentBuilderFactory): ReadResult<List<RssVideo>> {
     try {
-        val factory=DocumentBuilderFactory.newInstance()
-        factory.isNamespaceAware=true
-        factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl",true)
-        factory.setFeature("http://xml.org/sax/features/external-general-entities",false)
-        factory.setFeature("http://xml.org/sax/features/external-parameter-entities",false)
-        factory.setAttribute(javax.xml.XMLConstants.ACCESS_EXTERNAL_DTD,"")
-        factory.setAttribute(javax.xml.XMLConstants.ACCESS_EXTERNAL_SCHEMA,"")
+        // These guards do not depend on JAXP implementation-specific switches. No declarations
+        // may define custom entities, and no include element may trigger an XInclude fetch.
+        if (body.contains("<!DOCTYPE", ignoreCase = true) || body.contains("<!ENTITY", ignoreCase = true) ||
+            RSS_INCLUDE_ELEMENT.containsMatchIn(body)) return invalidRss()
+        factory.isNamespaceAware = true
+        factory.isValidating = false
+        factory.isExpandEntityReferences = false
+        if (!factory.isNamespaceAware || factory.isValidating || factory.isExpandEntityReferences) return invalidRss()
+        try { factory.isXIncludeAware = false } catch (_: UnsupportedOperationException) { /* Include syntax was rejected above. */ }
+        // Android Harmony rejects these optional controls. The declaration guard and rejecting
+        // resolver remain mandatory, while supported controls provide another layer of defense.
+        for ((feature, enabled) in listOf(
+            "http://apache.org/xml/features/disallow-doctype-decl" to true,
+            "http://xml.org/sax/features/external-general-entities" to false,
+            "http://xml.org/sax/features/external-parameter-entities" to false)) {
+            try { factory.setFeature(feature, enabled) } catch (_: ParserConfigurationException) { }
+        }
+        for (attribute in listOf(javax.xml.XMLConstants.ACCESS_EXTERNAL_DTD, javax.xml.XMLConstants.ACCESS_EXTERNAL_SCHEMA)) {
+            try { factory.setAttribute(attribute, "") } catch (_: IllegalArgumentException) { }
+        }
         val builder=factory.newDocumentBuilder()
+        builder.setEntityResolver { _, _ -> throw SAXException("external_xml_reference_rejected") }
         builder.setErrorHandler(org.xml.sax.helpers.DefaultHandler())
         val document=builder.parse(org.xml.sax.InputSource(java.io.StringReader(body.removePrefix("\uFEFF"))))
         val atom="http://www.w3.org/2005/Atom"
@@ -33,8 +55,10 @@ fun rssVideos(body:String):ReadResult<List<RssVideo>> {
                 entry.text(atom,"published"),thumbnail?.getAttribute("url")))
         }
         return ReadResult(result)
-    } catch(_:Exception) { return ReadResult(error=RequestError(RequestFailure.PARSE,"invalid_rss")) }
+    } catch(_:Exception) { return invalidRss() }
 }
+private val RSS_INCLUDE_ELEMENT = Regex("<(?:[^!?\\s<>/]+:)?include(?=[\\s/>])", RegexOption.IGNORE_CASE)
+private fun invalidRss() = ReadResult<List<RssVideo>>(error = RequestError(RequestFailure.PARSE, "invalid_rss"))
 fun loadRssFeed(channelIds:List<String>,http:HttpClient=JvmHttpClient()):ReadResult<RssFeed> {
     if(channelIds.distinct().size>100) return ReadResult(error=RequestError(RequestFailure.INVALID,"too_many_channels"))
     val failures=LinkedHashMap<String,RequestError>();val videos=ArrayList<RssVideo>()

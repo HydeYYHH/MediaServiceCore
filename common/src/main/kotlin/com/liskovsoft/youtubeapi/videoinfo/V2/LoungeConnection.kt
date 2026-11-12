@@ -53,9 +53,9 @@ class LoungeConnection(private val screenName: String, private val deviceId: Str
     private val requests = java.util.concurrent.atomic.AtomicInteger()
     private val waiting = ConnectionWait(wait)
     init { require(screenName.isNotBlank() && deviceId.isNotBlank() && maxReconnects >= 0) }
-    fun identity() = current
+    fun identity() = if (closed) null else current
     internal fun nextRequestId() = requests.incrementAndGet()
-    override fun close() { closed = true; waiting.close(); try { reader?.close() } catch (_: IOException) {} }
+    override fun close() { closed = true; waiting.close(); closeReader(reader) }
     fun listen(receive: (LoungeCommand) -> Unit): ReadResult<Boolean> {
         if (!running.compareAndSet(false,true)) return ReadResult(error=RequestError(RequestFailure.INVALID,"already_listening"))
         var failures = 0
@@ -84,11 +84,15 @@ class LoungeConnection(private val screenName: String, private val deviceId: Str
                     val listenUrl = urlWithParameter(session.listenUrl,"AID",maxOf(0,frames.lastId).toString())
                     val active = transport.open(HttpRequest("GET",listenUrl))
                     reader = active
-                    if (closed) { active.close(); break }
-                    active.use {
+                    if (closed) { closeReader(active); break }
+                    try {
                         val buffer = CharArray(4096)
                         while (!closed) {
-                            val count = it.read(buffer)
+                            // Android readers can throw IllegalStateException after a concurrent
+                            // close. This is a lost stream, subject to the same bounded reconnect.
+                            val count = try { active.read(buffer) } catch (failure: IllegalStateException) {
+                                throw IOException("lounge_stream_closed", failure)
+                            }
                             if (count < 0) break
                             if (count == 0) continue
                             val before = frames.framesRead
@@ -98,15 +102,22 @@ class LoungeConnection(private val screenName: String, private val deviceId: Str
                             for (command in commands) { if (!closed) receive(command) }
                         }
                         if (!closed) frames.finish()
+                    } finally {
+                        current = null
+                        closeReader(active)
                     }
                     reader = null
                     if (!closed) failures++
-                } catch (_: IOException) { if (!closed) failures++ }
+                } catch (_: IOException) { current = null; if (!closed) failures++ }
             }
             return if (Thread.currentThread().isInterrupted) ReadResult(error=RequestError(RequestFailure.CANCELLED,"cancelled")) else ReadResult(true)
         } catch (_: InterruptedException) {
             Thread.currentThread().interrupt()
             return ReadResult(error=RequestError(RequestFailure.CANCELLED,"cancelled"))
-        } finally { try { reader?.close() } catch (_: IOException) {}; reader=null; current=null; running.set(false) }
+        } finally { closeReader(reader); reader=null; current=null; running.set(false) }
+    }
+
+    private fun closeReader(value: Reader?) {
+        try { value?.close() } catch (_: IOException) { } catch (_: IllegalStateException) { }
     }
 }

@@ -4,10 +4,10 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class ContentReplayTest {
-    private fun fixture(name: String) = requireNotNull(javaClass.getResource("/review/$name")).readText()
+    private fun fixture(name: String) = requireNotNull(javaClass.getResource("/fixtures/$name")).readText()
 
     @Test fun modernPlaylistRetainsItsHeaderAndAllEntries() {
-        val page = playlistPage(fixture("probe-playlist-detail.json"))
+        val page = playlistPage(fixture("playlist-detail.json"))
         assertEquals("30", page.title)
         assertEquals("Adele", page.owner)
         assertEquals(13, page.videos.size)
@@ -28,7 +28,7 @@ class ContentReplayTest {
     }
 
     @Test fun carouselMetadataStaysBoundToItsOwnTile() {
-        val page = browsePage(fixture("probe-tv-music.json"))
+        val page = browsePage(fixture("tv-music.json"))
         val video = page.items.single { it.id == "Rt9tW3cMLhI" }
         assertEquals("Olivia Rodrigo - stupid song (Official Music Video)", video.title)
         assertEquals("Olivia Rodrigo", video.author)

@@ -11,17 +11,17 @@ class ContentMetadataTest {
         "rendererContext":{"commandContext":{"onTap":{"innertubeCommand":{"watchEndpoint":{"videoId":"abcdefghijk"}}}}}
     }}]}""").items.single()
 
-    @Test fun tvMusicSearchKeepsAnUnlinkedAuthorAndItsStats() {
+    @Test fun genericMusicMetadataKeepsStatsWithoutGuessingAnUnlinkedAuthor() {
         val item = lockup("""{"metadataParts":[{"text":{"content":"Aleesa Sky"}}]},
             {"metadataParts":[{"text":{"content":"Song"}},{"text":{"content":"2.5K views"}}]}""")
-        assertEquals("Aleesa Sky", item.author)
+        assertNull(item.author)
         assertEquals("2.5K views", item.viewCount)
         assertNull(item.published)
         assertNull(item.duration)
     }
 
-    @Test fun tvRecommendationsKeepAnAuthorOnlyRow() {
-        assertEquals("Electric Dreams", lockup("""{"metadataParts":[{"text":{"content":"Electric Dreams"}}]}""").author)
+    @Test fun aSingleGenericMetadataRowDoesNotEstablishAnAuthorRole() {
+        assertNull(lockup("""{"metadataParts":[{"text":{"content":"Electric Dreams"}}]}""").author)
     }
 
     @Test fun statsOnlyRowsAreNeverUsedAsChannelNames() {

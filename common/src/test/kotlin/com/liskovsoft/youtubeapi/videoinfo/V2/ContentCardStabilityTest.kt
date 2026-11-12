@@ -74,7 +74,7 @@ class ContentCardStabilityTest {
     }
 
     @Test fun blankLegacyFieldsDoNotHideModernFallbackMetadata() {
-        val item = lockup("""{"metadataParts":[{"text":{"content":"Creator"}}]},
+        val item = lockup("""{"metadataParts":[{"text":{"content":"Creator"},"navigationEndpoint":{"browseEndpoint":{"browseId":"UCcreator"}}}]},
             {"metadataParts":[{"text":{"content":"9K views"}},{"text":{"content":"1 day ago"}}]}""",
             extra = """, "viewCountText":{"simpleText":""},"publishedTimeText":{"simpleText":" "},
                 "shortBylineText":{"simpleText":""},"lengthText":{"simpleText":""},

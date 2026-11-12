@@ -17,13 +17,13 @@ class MenuReadTest {
                     row("channel", "\"hideEnclosingContainerUis\":{}")).joinToString(",")))
             }
         }
-        val actions = loadMenu(endpoint, RequestContext(accountId = "account", accessToken = "access",
+        val actions = loadMenu(endpoint, RequestContext(accountId = "account", webSession = WebSession("SAPISID=access"),
             visitor = "visitor", language = "fr", onBehalfOfUser = "channel"), http).value!!
         assertEquals("video", actions.single { it.kind == MenuActionKind.NotInterested }.kindToken)
         assertEquals("channel", actions.single { it.kind == MenuActionKind.DontRecommendChannel }.kindToken)
         val request = requests.single()
         assertTrue(request.url.startsWith(YOUTUBE_API + "get_panel"))
-        assertEquals("Bearer access", request.headers["Authorization"])
+        assertTrue(request.headers["Authorization"]!!.startsWith("SAPISIDHASH "))
         assertEquals("visitor", request.headers["X-Goog-Visitor-Id"])
         val body = jsonObject(request.body)!!
         assertEquals(endpoint.panelId, body.text("panelId"))

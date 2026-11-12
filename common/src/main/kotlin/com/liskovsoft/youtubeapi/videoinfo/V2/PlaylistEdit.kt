@@ -94,8 +94,8 @@ fun createPlaylist(
 ): PlaylistWrite {
     if (title.isNullOrBlank()) return failed
     if (videoId != null && videoId.isNotEmpty() && !videoIdAccepted(videoId)) return failed
-    val payload = if (videoId.isNullOrEmpty()) """"title":"${escapeJson(title)}""""
-    else """"title":"${escapeJson(title)}","videoIds":["${escapeJson(videoId)}"]"""
+    val payload = if (videoId.isNullOrEmpty()) """"title":"${escapeJson(title)}","privacyStatus":"PRIVATE""""
+    else """"title":"${escapeJson(title)}","privacyStatus":"PRIVATE","videoIds":["${escapeJson(videoId)}"]"""
     return sendPlaylist(webQuery(CREATE_URL, payload, visitor), post)
 }
 

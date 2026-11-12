@@ -5,7 +5,7 @@ import org.junit.Test
 
 class ActionStateTest {
     @Test fun preservesHttpStatusWithoutIncludingUnknownResponseFields() {
-        val context = RequestContext("account", "token")
+        val context = RequestContext(accountId = "account", webSession = WebSession("SAPISID=token"))
         val http = object : HttpClient {
             override fun execute(request: HttpRequest) = HttpReply(200, """{"responseContext":{},"private":"secret"}""")
         }
@@ -17,7 +17,7 @@ class ActionStateTest {
     @Test fun distinguishesAnAcknowledgementFromAnExplicitConfirmation() {
         var body = "{}"
         val http = object : HttpClient { override fun execute(request: HttpRequest) = HttpReply(200, body) }
-        val context = RequestContext("account", "token")
+        val context = RequestContext(accountId = "account", webSession = WebSession("SAPISID=token"))
         assertEquals(ActionState.UNCONFIRMED, voteVideo("v", VideoVote.LIKE, context, http).value!!.state)
         body = "{\"success\":true}"
         assertTrue(voteVideo("v", VideoVote.LIKE, context, http).value!!.confirmed)

@@ -71,7 +71,11 @@ internal fun Json.Obj.text(name: String) = (fields[name] as? Json.Str)?.value
 internal fun Json.Obj.bool(name: String) = (fields[name] as? Json.Bool)?.value
 
 private fun Json.Obj.integer(name: String): Int? {
-    val text = (fields[name] as? Json.Num)?.text ?: return null
+    val text = when (val value = fields[name]) {
+        is Json.Num -> value.text
+        is Json.Str -> value.value
+        else -> return null
+    }
     val digits = if (text.startsWith("-")) text.substring(1) else text
     if (digits.isEmpty() || digits.any { it !in '0'..'9' }) return null
     return text.toIntOrNull()
@@ -103,7 +107,9 @@ private fun Json.Obj.formats(name: String): List<PlayerFormat> {
             videoRange(format),
             format.long("approxDurationMs"),
             format.integer("audioSampleRate"),
-            format.obj("audioChannels")?.arr("channels")?.firstOrNull()?.let { (it as? Json.Obj)?.integer("channelCount") ?: (it as? Json.Num)?.text?.toIntOrNull() },
+            format.integer("audioChannels") ?: format.obj("audioChannels")?.arr("channels")?.firstOrNull()?.let {
+                (it as? Json.Obj)?.integer("channelCount") ?: (it as? Json.Num)?.text?.toIntOrNull()
+            },
             format.text("qualityLabel")?.takeIf { it.isNotEmpty() }
         ))
     }

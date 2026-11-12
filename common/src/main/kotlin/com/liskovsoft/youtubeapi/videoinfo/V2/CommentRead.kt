@@ -56,7 +56,9 @@ fun loadComments(videoId: String, context: RequestContext, continuation: String?
     }
     val response = requestObject(youtubeQuery(YOUTUBE_API + "next", payload("continuation" to key), context).withCompactResponse(), http)
     if (!response.ok) return ReadResult(error = response.error)
-    var page = commentPage(response.value!!)
+    val parsed = readCommentPage(response.value!!)
+    if (!parsed.ok) return parsed
+    var page = parsed.value!!
     if (opening != null) page = page.copy(
         createKey = page.createKey ?: opening.commentCreateKey,
         sortOptions = page.sortOptions.ifEmpty { opening.commentSortOptions },
@@ -66,5 +68,5 @@ fun loadComments(videoId: String, context: RequestContext, continuation: String?
 fun loadCommentReplies(replyKey: String, context: RequestContext = RequestContext(), http: HttpClient = JvmHttpClient()): ReadResult<CommentPage> {
     if (replyKey.isBlank()) return ReadResult(error = RequestError(RequestFailure.INVALID, "missing_reply_key"))
     val response = requestObject(youtubeQuery(YOUTUBE_API + "next", payload("continuation" to replyKey), context).withCompactResponse(), http)
-    return if (response.ok) ReadResult(commentPage(response.value!!)) else ReadResult(error = response.error)
+    return if (response.ok) readCommentPage(response.value!!, allowEmptyReplies = true) else ReadResult(error = response.error)
 }

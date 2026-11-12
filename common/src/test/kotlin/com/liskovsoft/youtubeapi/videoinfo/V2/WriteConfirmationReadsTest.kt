@@ -4,11 +4,19 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class WriteConfirmationReadsTest {
-    private val context = RequestContext("owner", "access", generation = 7)
+    private val context = RequestContext(accountId = "owner", webSession = WebSession("SAPISID=access"), generation = 7)
     private fun choices(vararg options: String) = """{"contents":[{"addToPlaylistRenderer":{"playlists":[${options.joinToString(",")}]}}]}"""
     private fun choice(id: String, state: String?) = """{"playlistAddToOptionRenderer":{"playlistId":"$id"${state?.let { ",\"containsSelectedVideos\":\"$it\"" }.orEmpty()}}}"""
-    private fun control(endpoint: String, disabled: Boolean = false) = """{"buttonRenderer":{"isDisabled":$disabled,"serviceEndpoint":{
-        "commandMetadata":{"webCommandMetadata":{"apiUrl":"/youtubei/v1/history/$endpoint"}}}}}"""
+    private fun control(endpoint: String, disabled: Boolean = false): String {
+        val command = if (endpoint == "pause_watch_history") "PAUSE" else "RESUME"
+        val icon = if (command == "PAUSE") "PAUSE_OUTLINED" else "PLAY_OUTLINED"
+        return """{"buttonRenderer":{"isDisabled":$disabled,"icon":{"iconType":"$icon"},"navigationEndpoint":{
+            "confirmDialogEndpoint":{"content":{"confirmDialogRenderer":{"confirmEndpoint":{"feedbackEndpoint":{
+            "feedbackToken":"server-token","actions":[{"localWatchHistoryCommand":{
+            "localWatchHistoryCommandType":"LOCAL_WATCH_HISTORY_COMMAND_TYPE_$command"}}]}}}}}}}}"""
+    }
+    private fun management(vararg controls: String) = """{"contents":{"twoColumnBrowseResultsRenderer":{
+        "secondaryContents":{"browseFeedActionsRenderer":{"contents":[${controls.joinToString(",")}]}}}}}"""
 
     @Test fun membershipDistinguishesExplicitAbsenceFromAnUnknownServerFlag() {
         val parsed = playlistChoices(choices(choice("PLall", "ALL"), choice("PLnone", "NONE"),
@@ -31,16 +39,16 @@ class WriteConfirmationReadsTest {
         assertEquals(2, calls.size)
         for (request in calls) {
             assertTrue(request.url.contains("/playlist/get_add_to_playlist"))
-            assertEquals("Bearer access", request.headers["Authorization"])
+            assertTrue(request.headers["Authorization"]!!.startsWith("SAPISIDHASH "))
             assertEquals(listOf("abcdefghijk"), jsonObject(request.body)!!.arr("videoIds").map { (it as Json.Str).value })
         }
     }
 
     @Test fun historyManagementReadsOnlyExplicitAvailableCommands() {
-        assertEquals(false, watchHistoryManagement("""{"contents":[${control("pause_watch_history") }]}""").paused)
-        assertEquals(true, watchHistoryManagement("""{"contents":[${control("resume_watch_history") }]}""").paused)
-        assertNull(watchHistoryManagement("""{"contents":[${control("pause_watch_history", true)}]}""").paused)
-        assertNull(watchHistoryManagement("""{"contents":[${control("pause_watch_history")},${control("resume_watch_history")}]}""").paused)
+        assertEquals(false, watchHistoryManagement(management(control("pause_watch_history"))).paused)
+        assertEquals(true, watchHistoryManagement(management(control("resume_watch_history"))).paused)
+        assertNull(watchHistoryManagement(management(control("pause_watch_history", true))).paused)
+        assertNull(watchHistoryManagement(management(control("pause_watch_history"), control("resume_watch_history"))).paused)
     }
 
     @Test fun emptyHistoryLabelsAndUnrecognizedCommandsNeverProveThePausedState() {
@@ -57,7 +65,7 @@ class WriteConfirmationReadsTest {
         val http = object : HttpClient {
             override fun execute(request: HttpRequest): HttpReply {
                 calls += request
-                return HttpReply(200, """{"contents":[${control(if (calls.size == 1) "pause_watch_history" else "resume_watch_history")}]}""")
+                return HttpReply(200, management(control(if (calls.size == 1) "pause_watch_history" else "resume_watch_history")))
             }
         }
         assertEquals(false, loadWatchHistoryManagement(context, http).value!!.paused)
@@ -65,7 +73,7 @@ class WriteConfirmationReadsTest {
         assertEquals(2, calls.size)
         for (request in calls) {
             assertEquals("FEhistory", jsonObject(request.body)!!.text("browseId"))
-            assertEquals("Bearer access", request.headers["Authorization"])
+            assertTrue(request.headers["Authorization"]!!.startsWith("SAPISIDHASH "))
         }
     }
 

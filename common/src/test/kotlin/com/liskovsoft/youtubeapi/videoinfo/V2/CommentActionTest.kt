@@ -17,6 +17,8 @@ class CommentActionTest {
             "toggledServiceEndpoint":{"performCommentActionEndpoint":{"action":"UNDISLIKE"}}}}
         }}}}"""
 
+    private fun detail() = """{"continuationContents":{"itemSectionContinuation":{"contents":[${ratingRenderer()}]}}}"""
+
     @Test fun detailCapabilitiesCannotReinterpretAnExplicitRatingIntent() {
         for (vote in CommentVote.values()) {
             val writes = mutableListOf<String>()
@@ -25,14 +27,14 @@ class CommentActionTest {
                     deleteKey = "DELETE", replyCreateKey = "REPLY", replyKey = "replies")
             val http = object : HttpClient {
                 override fun execute(request: HttpRequest): HttpReply {
-                    return if (request.body!!.contains("\"continuation\"")) HttpReply(200, ratingRenderer())
+                    return if (request.body!!.contains("\"continuation\"")) HttpReply(200, detail())
                     else {
                         writes += request.body!!
                         HttpReply(200, """{"status":"STATUS_SUCCEEDED"}""")
                     }
                 }
             }
-            val result = rateComment(original, vote, RequestContext(accessToken = "token"), http).value!!.comment!!
+            val result = rateComment(original, vote, RequestContext(webSession = WebSession("SAPISID=token")), http).value!!.comment!!
             assertTrue(writes.single().contains("\"actions\":[\"${vote.name}\"]"))
             assertEquals(vote == CommentVote.LIKE, result.liked)
             assertEquals(vote == CommentVote.DISLIKE, result.disliked)
@@ -53,11 +55,11 @@ class CommentActionTest {
         val http = object : HttpClient {
             override fun execute(request: HttpRequest): HttpReply {
                 requests += request.body!!
-                return HttpReply(200, if (request.body!!.contains("\"continuation\"")) ratingRenderer()
+                return HttpReply(200, if (request.body!!.contains("\"continuation\"")) detail()
                     else """{"status":"STATUS_SUCCEEDED"}""")
             }
         }
-        assertTrue(likeComment(original, RequestContext(accessToken = "token"), http).value!!.comment!!.liked)
+        assertTrue(likeComment(original, RequestContext(webSession = WebSession("SAPISID=token")), http).value!!.comment!!.liked)
         assertEquals(2, requests.size)
         assertTrue(requests.last().contains("\"actions\":[\"LIKE\"]"))
     }
@@ -68,7 +70,7 @@ class CommentActionTest {
             override fun execute(request: HttpRequest) = HttpReply(200,
                 """{"status":"STATUS_SUCCEEDED","commentRenderer":{"commentId":"parent","voteCount":{"simpleText":"923"}}}""")
         }
-        val confirmed = rateComment(original, CommentVote.LIKE, RequestContext(accessToken = "token"), http).value!!.comment!!
+        val confirmed = rateComment(original, CommentVote.LIKE, RequestContext(webSession = WebSession("SAPISID=token")), http).value!!.comment!!
         assertTrue(confirmed.liked)
         assertEquals("923", confirmed.likeCount)
     }
@@ -78,12 +80,12 @@ class CommentActionTest {
         val http = object : HttpClient {
             override fun execute(request: HttpRequest): HttpReply {
                 requests += request
-                assertEquals("Bearer token", request.headers["Authorization"])
-                assertEquals("TVHTML5", jsonObject(request.body!!)!!.path("context", "client")!!.text("clientName"))
+                assertTrue(request.headers["Authorization"]!!.startsWith("SAPISIDHASH "))
+                assertEquals("WEB", jsonObject(request.body!!)!!.path("context", "client")!!.text("clientName"))
                 return HttpReply(200, """{"actionResult":{"status":"STATUS_SUCCEEDED"}}""")
             }
         }
-        val context = RequestContext("account", "token")
+        val context = RequestContext(accountId = "account", webSession = WebSession("SAPISID=token"))
         assertTrue(createVideoComment("abcdefghijk", "Hello", null, context, http).value!!.action.confirmed)
         val create = jsonObject(requests.last().body!!)!!.text("createCommentParams")!!
         assertArrayEquals(byteArrayOf(18, 11) + "abcdefghijk".toByteArray() + byteArrayOf(42, 0, 80, 7), decode(create))
@@ -104,12 +106,12 @@ class CommentActionTest {
 
     @Test fun returnsCreatedEntitiesAndRejectsBusinessFailures() {
         val good = object : HttpClient { override fun execute(request: HttpRequest): HttpReply {
-            assertEquals("Bearer t", request.headers["Authorization"])
+            assertTrue(request.headers["Authorization"]!!.startsWith("SAPISIDHASH "))
             return HttpReply(200, """{"commentRenderer":{"commentId":"created","contentText":{"simpleText":"hello"}}}""")
         }}
-        assertEquals("created", createComment("hello", "key", RequestContext("a","t"), good).value!!.comment!!.id)
+        assertEquals("created", createComment("hello", "key", RequestContext(accountId = "a", webSession = WebSession("SAPISID=t")), good).value!!.comment!!.id)
         val bad = object : HttpClient { override fun execute(request: HttpRequest) = HttpReply(200, """{"actionResults":[{"status":"STATUS_FAILED"}]}""") }
-        assertFalse(createComment("hello", "key", RequestContext("a","t"), bad).ok)
+        assertFalse(createComment("hello", "key", RequestContext(accountId = "a", webSession = WebSession("SAPISID=t")), bad).ok)
         assertFalse(sendComment(createCommentQuery("hello","key",null)) { 200 to "{\"error\":{\"code\":403}}" })
     }
 }

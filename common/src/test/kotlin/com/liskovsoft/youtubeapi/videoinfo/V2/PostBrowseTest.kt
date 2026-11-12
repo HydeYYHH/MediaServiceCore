@@ -54,6 +54,7 @@ class PostBrowseTest {
 
     @Test fun postCommentsComeFromTheirOwnSectionInsteadOfAnUnrelatedContinuation() {
         val html = """<script>window["ytInitialData"] = {"contents":[
+            {"backstagePostRenderer":{"postId":"Ugkx_post"}},
             {"continuationItemRenderer":{"continuationEndpoint":{"continuationCommand":{"token":"unrelated"}}}},
             {"itemSectionRenderer":{"sectionIdentifier":"comment-item-section","contents":[
                 {"continuationItemRenderer":{"continuationEndpoint":{"continuationCommand":{"token":"post-comments"}}}}
@@ -61,6 +62,7 @@ class PostBrowseTest {
         ]};</script>"""
         val http = object : HttpClient { override fun execute(request: HttpRequest) = HttpReply(200, html) }
         val page = loadPost("Ugkx_post", http).value!!
+        assertEquals("Ugkx_post", page.posts.single().postId)
         assertEquals("post-comments", page.commentsKey)
         assertNull(page.nextKey)
     }
@@ -76,18 +78,21 @@ class PostBrowseTest {
         val http = object : HttpClient {
             override fun execute(request: HttpRequest): HttpReply {
                 calls += request
-                return HttpReply(200, """{"commentsHeaderRenderer":{"countText":{"simpleText":"20 Comments"}},"contents":[]}""")
+                return HttpReply(200, if (calls.size == 1) """{"contents":[]}""" else """{"continuationContents":{"itemSectionContinuation":{"contents":[
+                    {"commentsHeaderRenderer":{"countText":{"simpleText":"20 Comments"}}}
+                ]}}}""")
             }
         }
-        val context = RequestContext(accountId = "account", accessToken = "token", language = "zh-CN", generation = 7)
+        val context = RequestContext(accountId = "account", webSession = WebSession("SAPISID=token"), language = "zh-CN", generation = 7)
         assertTrue(loadChannelPosts("UCchannel", context.anonymous(), params = "posts", http = http).ok)
         assertEquals("20 Comments", loadPostComments("post-comments", context, http).value!!.total)
         calls.forEach {
             assertTrue(it.url.startsWith("https://www.youtube.com/youtubei/v1/browse?"))
             assertTrue(it.body.contains("\"clientName\":\"WEB\""))
             assertTrue(it.body.contains("\"hl\":\"zh-CN\""))
-            assertFalse(it.headers.containsKey("Authorization"))
         }
+        assertFalse(calls.first().headers.containsKey("Authorization"))
+        assertEquals("SAPISID=token", calls.last().headers["Cookie"])
         assertTrue(calls.last().body.contains("\"continuation\":\"post-comments\""))
         assertFalse(loadPostComments(" ", context, http).ok)
         assertEquals(2, calls.size)
@@ -102,12 +107,12 @@ class PostBrowseTest {
     }
 
     @Test fun thePostPageCarvesYtInitialDataOutOfTheDocument() {
-        val page = """<html><script>var ytInitialData = {"contents":[{"backstagePostRenderer":{"postId":"Ugkz2",
+        val page = """<html><script>var ytInitialData = {"contents":[{"backstagePostRenderer":{"postId":"Ugkz2abc",
             "contentText":{"simpleText":"From the page"}}}]};</script></html>"""
         val http = object : HttpClient { override fun execute(request: HttpRequest) = HttpReply(200, page) }
         val result = loadPost("Ugkz2abc", http = http)
         assertTrue(result.ok)
-        assertEquals("Ugkz2", result.value!!.posts.single().postId)
+        assertEquals("Ugkz2abc", result.value!!.posts.single().postId)
         assertEquals("From the page", result.value!!.posts.single().text)
     }
 }

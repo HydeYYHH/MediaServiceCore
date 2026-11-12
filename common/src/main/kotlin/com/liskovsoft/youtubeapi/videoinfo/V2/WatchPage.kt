@@ -124,5 +124,5 @@ fun loadWatch(videoId: String?, context: RequestContext = RequestContext(), cont
     val fields = if (continuation != null) payload("continuation" to continuation) else
         payload("videoId" to videoId, "playlistId" to playlistId, "params" to params) + if (index == null) "" else ",\"index\":$index"
     val reply = requestObject(youtubeQuery(YOUTUBE_API + "next", fields, context).withCompactResponse(), http)
-    return if (reply.ok) ReadResult(watchPage(reply.value!!, videoId)) else ReadResult(error = reply.error)
+    return if (reply.ok) readWatchPage(reply.value!!, videoId, continuation != null) else ReadResult(error = reply.error)
 }

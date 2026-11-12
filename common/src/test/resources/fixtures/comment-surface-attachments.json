@@ -1,0 +1,19 @@
+{
+  "onResponseReceivedEndpoints": [{"reloadContinuationItemsCommand": {"slot": "RELOAD_CONTINUATION_SLOT_BODY", "continuationItems": [
+    {"commentThreadRenderer": {"commentViewModel": {"commentViewModel": {"commentId": "image-comment", "commentKey": "image-entity", "commentSurfaceKey": "image-surface"}}}},
+    {"commentThreadRenderer": {"commentViewModel": {"commentViewModel": {"commentId": "voice-comment", "commentKey": "voice-entity", "commentSurfaceKey": "voice-surface"}}}},
+    {"commentThreadRenderer": {"commentViewModel": {"commentViewModel": {"commentId": "unavailable-comment", "commentKey": "unavailable-entity", "commentSurfaceKey": "unavailable-surface"}}}}
+  ]}}],
+  "frameworkUpdates": {"entityBatchUpdate": {"mutations": [
+    {"entityKey": "voice-entity", "payload": {"commentEntityPayload": {"key": "voice-entity", "properties": {"commentId": "voice-comment", "content": {"content": ""}}, "author": {"displayName": "Voice author"}}}},
+    {"entityKey": "image-entity", "payload": {"commentEntityPayload": {"key": "image-entity", "properties": {"commentId": "image-comment", "content": {"content": ""}}, "author": {"displayName": "Image author"}}}},
+    {"entityKey": "unavailable-entity", "payload": {"commentEntityPayload": {"key": "unavailable-entity", "properties": {"commentId": "unavailable-comment", "content": {"content": ""}}}}},
+    {"entityKey": "image-surface", "payload": {"commentSurfaceEntityPayload": {"key": "image-surface", "imageAttachmentViewModel": {"commentImageAttachmentViewModel": {
+      "width": 320, "height": 180, "aspectRatio": 1.7777777777777777,
+      "image": {"sources": [{"url": "https://images.example.test/small", "width": 160, "height": 90}, {"url": "https://images.example.test/large", "width": 320, "height": 180}]}
+    }}}}},
+    {"entityKey": "voice-surface", "payload": {"commentSurfaceEntityPayload": {"key": "voice-surface", "voiceReplyContainerViewModel": {"voiceReplyContainerViewModel": {"transcriptText": {"content": "A server supplied voice transcript"}, "voiceReplyUnavailableText": {"content": "Audio is unavailable"}}}}}},
+    {"entityKey": "unavailable-surface", "payload": {"commentSurfaceEntityPayload": {"key": "unavailable-surface", "imageAttachmentViewModel": {"commentImageAttachmentViewModel": {"unavailableText": "Image unavailable", "unsupportedText": "Image cannot be displayed"}}}}},
+    {"entityKey": "unrelated-surface", "payload": {"commentSurfaceEntityPayload": {"key": "unrelated-surface", "imageAttachmentViewModel": {"commentImageAttachmentViewModel": {"image": {"sources": [{"url": "https://images.example.test/unrelated"}]}}}}}}
+  ]}}
+}

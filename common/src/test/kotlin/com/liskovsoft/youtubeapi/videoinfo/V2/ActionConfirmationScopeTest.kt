@@ -6,7 +6,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ActionConfirmationScopeTest {
-    private val context = RequestContext(accessToken = "fixture-token")
+    private val context = RequestContext(webSession = WebSession("SAPISID=fixture-token"))
     private val comment = commentPage("""{"commentRenderer":{"commentId":"target","isLiked":false}}""")
         .comments.single().copy(likeKey = "LIKE")
     private fun http(body: String) = object : HttpClient {
@@ -54,7 +54,7 @@ class ActionConfirmationScopeTest {
     }
 
     @Test fun postFeedbackCannotBorrowConfirmationFromUnrelatedEntities() {
-        val web = context.copy(accessToken = null, webSession = WebSession("SAPISID=fixture; SID=fixture"))
+        val web = context.copy(webSession = WebSession("SAPISID=fixture; SID=fixture"))
         val command = PostCommand("feedback", "\"feedbackTokens\":[\"fixture-feedback\"]")
         for (body in listOf("""{"commentRenderer":{"commentId":"unrelated-comment"}}""",
             """{"playlistId":"unrelated-playlist"}""")) {

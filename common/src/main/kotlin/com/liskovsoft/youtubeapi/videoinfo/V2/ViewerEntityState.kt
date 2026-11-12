@@ -83,7 +83,6 @@ internal fun actionRequestMetadata(query: PlayerQuery): Map<String, String> {
             else -> "partial"
         },
         "request_auth" to when {
-            authorization?.startsWith("Bearer ") == true -> "oauth"
             authorization?.startsWith("SAPISIDHASH ") == true -> "web"
             authorization.isNullOrBlank() -> "anonymous"
             else -> "other"

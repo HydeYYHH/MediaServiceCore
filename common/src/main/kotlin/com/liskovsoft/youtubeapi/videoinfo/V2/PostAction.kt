@@ -58,7 +58,7 @@ fun performPostCommand(command: PostCommand?, context: RequestContext, http: Htt
     if (command == null || command.endpoint !in postEndpoints || command.payload.isBlank())
         return ReadResult(error = RequestError(RequestFailure.UNSUPPORTED, "missing_post_action"))
     return requestAction(contextualQuery(webQuery(YOUTUBE_API + command.endpoint, command.payload, context.visitor),
-        context.copy(accessToken = null)), http, entityScope = ActionEntityScope.None)
+        context), http, entityScope = ActionEntityScope.None)
 }
 
 /** Post ratings can acknowledge success with a vote update instead of a status field. */

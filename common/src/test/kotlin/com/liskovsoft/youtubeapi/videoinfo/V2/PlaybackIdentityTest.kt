@@ -5,8 +5,8 @@ import org.junit.Test
 
 class PlaybackIdentityTest {
     @Test fun separatesCredentialsAndLocaleWithoutRequiringAnAccountId() {
-        val contexts = listOf(RequestContext(), RequestContext(accessToken = "first-secret"),
-            RequestContext(accessToken = "second-secret"), RequestContext(language = "zh"),
+        val contexts = listOf(RequestContext(), RequestContext(webSession = WebSession("SAPISID=first-secret")),
+            RequestContext(webSession = WebSession("SAPISID=second-secret")), RequestContext(language = "zh"),
             RequestContext(region = "JP"), RequestContext(onBehalfOfUser = "brand"))
         assertEquals(contexts.size, contexts.map { it.scope() }.distinct().size)
         assertFalse(contexts[1].scope().contains("first-secret"))

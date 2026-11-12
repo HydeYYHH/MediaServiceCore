@@ -43,24 +43,14 @@ internal fun actionEndpoint(command: Json.Obj?): ActionEndpoint? {
 
 internal fun pageActions(root: Json): List<PageAction> {
     val result = ArrayList<PageAction>()
-    val types = setOf("buttonRenderer", "buttonViewModel", "toggleButtonRenderer", "menuServiceItemRenderer",
-        "menuNavigationItemRenderer", "chipCloudChipRenderer", "listItemViewModel")
+    val types = setOf("buttonRenderer", "gridButtonRenderer", "buttonViewModel", "toggleButtonRenderer", "menuServiceItemRenderer",
+        "menuNavigationItemRenderer", "chipCloudChipRenderer", "listItemViewModel", "buttonCardViewModel")
     fun visit(node: Json) {
         when (node) {
             is Json.Obj -> for ((name, value) in node.fields) {
                 val item = value as? Json.Obj
                 if (name in types && item != null) {
-                    val command = item.obj("serviceEndpoint") ?: item.obj("navigationEndpoint")
-                        ?: item.obj("onTap") ?: item.obj("defaultServiceEndpoint") ?: item.obj("command")
-                        ?: item.path("rendererContext", "commandContext", "onTap", "innertubeCommand")
-                    val endpoint = actionEndpoint(command)
-                    if (endpoint != null) {
-                        val classified = menuActionKind(item, command)
-                        result.add(PageAction(item.display("text") ?: item.display("title")
-                            ?: item.text("accessibilityText"), endpoint,
-                            item.bool("isSelected") == true || item.bool("isToggled") == true,
-                            classified?.first, classified?.second))
-                    }
+                    directPageAction(item)?.let(result::add)
                     visit(value)
                 } else if (name !in contentRenderers) visit(value)
             }
@@ -70,6 +60,17 @@ internal fun pageActions(root: Json): List<PageAction> {
     }
     visit(root)
     return result.distinctBy { Triple(it.title, it.endpoint, it.kind) }
+}
+
+/** One renderer's own action; unlike [pageActions], this never promotes popup descendants. */
+internal fun directPageAction(item: Json.Obj): PageAction? {
+    val command = item.obj("serviceEndpoint") ?: item.obj("navigationEndpoint")
+        ?: item.obj("onTap") ?: item.obj("defaultServiceEndpoint") ?: item.obj("command")
+        ?: item.path("rendererContext", "commandContext", "onTap", "innertubeCommand")
+    val endpoint = actionEndpoint(command) ?: return null
+    val classified = menuActionKind(item, command)
+    return PageAction(item.display("text") ?: item.display("title") ?: item.text("accessibilityText"), endpoint,
+        item.bool("isSelected") == true || item.bool("isToggled") == true, classified?.first, classified?.second)
 }
 
 private class FeedbackSite(val token: String, val uiActions: Set<String>, val hidesContainer: Boolean)

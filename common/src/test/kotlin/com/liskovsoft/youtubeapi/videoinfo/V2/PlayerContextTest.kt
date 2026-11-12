@@ -8,7 +8,7 @@ class PlayerContextTest {
     @Test fun bindsSolvingAndTokensToTheScriptVideoAndPurpose() {
         val purposes = ArrayList<TokenPurpose>()
         val provider = object : PlayerTokenProvider { override fun token(request: PlayerTokenRequest): PlayerToken {
-            assertEquals("video", request.videoId); assertNull(request.context.accountId)
+            assertEquals("video", request.videoId); assertEquals("account", request.context.accountId)
             purposes.add(request.purpose)
             return PlayerToken(request.purpose.name, if (request.purpose == TokenPurpose.SUBTITLE) 5000 else 10000)
         }}
@@ -18,11 +18,11 @@ class PlayerContextTest {
             return PlayerChallenge(mapOf("abc" to "sig"), emptyMap())
         }}
         val http = object : HttpClient { override fun execute(request: HttpRequest): HttpReply {
-            assertNull(request.headers["Authorization"])
+            assertEquals("SAPISID=secret", request.headers["Cookie"])
             assertEquals("PLAYER", jsonObject(request.body)!!.obj("serviceIntegrityDimensions")!!.text("poToken"))
             return HttpReply(200, """{"streamingData":{"formats":[{"signatureCipher":"s=abc&url=https%3A%2F%2Fx"}]},"captions":{"playerCaptionsTracklistRenderer":{"captionTracks":[{"baseUrl":"https://captions.test/track","languageCode":"en"}]}}}""")
         }}
-        val result = loadPlayer("video", RequestContext("account", "secret"), http, PlayerScript("https://script/one", "signatureTimestamp:123"), solve, provider, now = {0})
+        val result = loadPlayer("video", RequestContext(accountId = "account", webSession = WebSession("SAPISID=secret")), http, PlayerScript("https://script/one", "signatureTimestamp:123"), solve, provider, now = {0})
         assertTrue(result.ok); assertEquals(listOf(TokenPurpose.PLAYER, TokenPurpose.MEDIA, TokenPurpose.SUBTITLE), purposes)
         assertEquals("MEDIA", urlParameter(result.value!!.answer!!.muxedFormats.single().url!!, "pot"))
         assertEquals("SUBTITLE", urlParameter(result.value!!.answer!!.captions.single().url!!, "pot"))

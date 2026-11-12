@@ -50,13 +50,21 @@ internal fun actionReply(root: Json.Obj, confirmsState: Boolean = false,
         responseShape = shapes.joinToString(",").ifEmpty { "unrecognized" }))
 }
 internal fun signedAction(endpoint: String, fields: String, context: RequestContext, http: HttpClient,
-    expected: ExpectedViewerState? = null): ReadResult<ActionReply> {
+    expected: ExpectedViewerState? = null): ReadResult<ActionReply> = signedAction(endpoint, fields, context, http, expected, null)
+
+internal fun signedAction(endpoint: String, fields: String, context: RequestContext, http: HttpClient,
+    expected: ExpectedViewerState?, expectedPlaylistSave: ExpectedPlaylistSave?): ReadResult<ActionReply> {
     if (!context.signedIn) return ReadResult(error = RequestError(RequestFailure.AUTH, "sign_in_required"))
-    return requestAction(youtubeQuery(YOUTUBE_API + endpoint, fields, context), http, expected)
+    return requestAction(youtubeQuery(YOUTUBE_API + endpoint, fields, context), http, expected,
+        ActionEntityScope.Generic, expectedPlaylistSave)
 }
 
 internal fun requestAction(query: PlayerQuery, http: HttpClient, expected: ExpectedViewerState? = null,
-    entityScope: ActionEntityScope = ActionEntityScope.Generic): ReadResult<ActionReply> {
+    entityScope: ActionEntityScope = ActionEntityScope.Generic): ReadResult<ActionReply> =
+    requestAction(query, http, expected, entityScope, null)
+
+internal fun requestAction(query: PlayerQuery, http: HttpClient, expected: ExpectedViewerState?, entityScope: ActionEntityScope,
+    expectedPlaylistSave: ExpectedPlaylistSave?): ReadResult<ActionReply> {
     val prepared = withTvActionContext(query)
     var status: Int? = null
     val transport = object : HttpClient {
@@ -65,14 +73,39 @@ internal fun requestAction(query: PlayerQuery, http: HttpClient, expected: Expec
     val reply = requestObject(prepared, transport)
     if (!reply.ok) return ReadResult(error = reply.error?.let { it.copy(status = it.status ?: status) })
     val root = requireNotNull(reply.value)
+    if (actionRequiresAttestation(root))
+        return ReadResult(error = RequestError(RequestFailure.VERIFICATION, "attestation_required", status))
     val observed = expected?.let { viewerEntityState(root, it.kind, it.target) }
     val confirmsState = expected != null && observed?.mutation == "replace" && observed.state == expected.state
-    val action = actionReply(root, confirmsState, if (expected != null) ActionEntityScope.None else entityScope)
+    val playlistAck = expectedPlaylistSave?.let { playlistSaveAcknowledgement(root, it, observed) }
+    val action = actionReply(root, confirmsState || playlistAck?.confirmed == true,
+        if (expected != null || expectedPlaylistSave != null) ActionEntityScope.None else entityScope)
     val metadata = actionRequestMetadata(prepared) + actionResponseMetadata(root) + if (expected == null) emptyMap() else
         (observed ?: ViewerEntityState(expected.kind, null, "missing")).metadata()
-    return if (action.ok) ReadResult(requireNotNull(action.value).copy(httpStatus = status, metadata = metadata))
-        else ReadResult(error = action.error?.let { it.copy(status = it.status ?: status) })
+    val playlistMetadata = playlistAck?.let { mapOf("playlist_save_acknowledgement" to it.metadata) }.orEmpty()
+    return if (action.ok) {
+        val value = requireNotNull(action.value)
+        ReadResult(value.copy(httpStatus = status, metadata = metadata + playlistMetadata,
+            state = if (playlistAck == PlaylistSaveAcknowledgement.REJECTED) ActionState.UNCONFIRMED else value.state))
+    } else ReadResult(error = action.error?.let { it.copy(status = it.status ?: status) })
 }
+
+/** Mutation commands have a declared envelope; arbitrary response payloads are not executable commands. */
+private fun actionRequiresAttestation(root: Json.Obj): Boolean {
+    val pending = java.util.ArrayDeque<Json.Obj>()
+    pending.add(root)
+    root.obj("command")?.let(pending::add)
+    for (name in listOf("actions", "onResponseReceivedActions", "onResponseReceivedEndpoints", "onResponseReceivedCommands"))
+        root.arr(name).filterIsInstance<Json.Obj>().forEach(pending::add)
+    while (pending.isNotEmpty()) {
+        val command = pending.removeLast()
+        if (command.fields["runAttestationCommand"] is Json.Obj) return true
+        command.obj("innertubeCommand")?.let(pending::add)
+        command.obj("commandExecutorCommand")?.arr("commands")?.filterIsInstance<Json.Obj>()?.forEach(pending::add)
+    }
+    return false
+}
+
 fun voteVideo(videoId: String, vote: VideoVote, context: RequestContext, http: HttpClient = JvmHttpClient()): ReadResult<ActionReply> {
     if (!videoIdAccepted(videoId)) return ReadResult(error = RequestError(RequestFailure.INVALID, "invalid_video_id"))
     val expected = when (vote) {

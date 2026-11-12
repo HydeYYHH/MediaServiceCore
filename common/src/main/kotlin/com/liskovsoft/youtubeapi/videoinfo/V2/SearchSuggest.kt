@@ -1,18 +1,21 @@
 package com.liskovsoft.youtubeapi.videoinfo.V2
 
-data class SearchFilter(val title: String?, val group: String?, val params: String, val selected: Boolean)
+/** [params] is absent for a selected display-only option with no navigation capability. */
+data class SearchFilter(val title: String?, val group: String?, val params: String?, val selected: Boolean)
 fun searchFilters(body: String): List<SearchFilter> = searchFilters(jsonObject(body))
 internal fun searchFilters(root: Json.Obj?): List<SearchFilter> {
     root ?: return emptyList()
-    return root.objects("searchFilterGroupRenderer").flatMap { group ->
-        group.objects("searchFilterRenderer").mapNotNull { filter ->
-            val params = filter.path("navigationEndpoint", "searchEndpoint")?.text("params") ?: return@mapNotNull null
-            SearchFilter(filter.display("label"), group.display("title"), params, filter.text("status") == "FILTER_STATUS_SELECTED")
-        }
-    }
+    val legacy = pureOwnedSearchCollection(root)?.legacy == true
+    if (!legacy && ownedSearchActions(root)?.valid == false) return emptyList()
+    return ownedSearchFilters(root, legacy)
 }
 fun searchSuggestions(body: String): List<String>? {
-    val root = jsonValue(body) as? Json.Arr ?: return null
+    val text = body.trim().removeSuffix(";")
+    // The YouTube suggestion client returns this fixed JSONP envelope. Parse the
+    // enclosed JSON as data; never evaluate callback text or accept arbitrary JS.
+    val json = if (text.startsWith("window.google.ac.h(") && text.endsWith(")"))
+        text.substring("window.google.ac.h(".length, text.length - 1) else text
+    val root = jsonValue(json) as? Json.Arr ?: return null
     val suggestions = root.items.getOrNull(1) as? Json.Arr ?: return emptyList()
     return suggestions.items.mapNotNull { item ->
         when (item) { is Json.Str -> item.value; is Json.Arr -> (item.items.firstOrNull() as? Json.Str)?.value; else -> null }

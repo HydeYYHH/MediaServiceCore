@@ -4,6 +4,42 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class ContentReadTest {
+    @Test fun webSearchMetadataBadgesIdentifyLiveVideosWithoutDisplayLabels() {
+        // Badge metadata may include accessibility and style fields.
+        val body = """{"contents":[
+            {"videoRenderer":{"videoId":"paired","badges":[
+                {"metadataBadgeRenderer":{"style":"BADGE_STYLE_TYPE_SIMPLE","icon":{"iconType":"OUTLINE_BAG"}}},
+                {"metadataBadgeRenderer":{"style":"BADGE_STYLE_TYPE_LIVE_NOW","icon":{"iconType":"LIVE"}}}],
+                "ownerBadges":[{"metadataBadgeRenderer":{"style":"BADGE_STYLE_TYPE_VERIFIED_ARTIST","icon":{"iconType":"AUDIO_BADGE"}}}]}},
+            {"videoRenderer":{"videoId":"style","badges":[{"metadataBadgeRenderer":{"style":"BADGE_STYLE_TYPE_LIVE_NOW"}}]}},
+            {"videoRenderer":{"videoId":"icon","badges":[{"metadataBadgeRenderer":{"icon":{"iconType":"LIVE"}}}]}}
+        ]}"""
+        val http = object : HttpClient { override fun execute(request: HttpRequest) = HttpReply(200, searchPrimaryFixture(body)) }
+        val page = loadSearch("fixture", http = http).value!!
+        assertEquals(listOf("paired", "style", "icon"), page.items.map { it.id })
+        assertTrue(page.items.all { it.live })
+        assertTrue(page.items.all { it.duration == null })
+    }
+
+    @Test fun ordinaryVideosAndOwnerVerificationDoNotBecomeLiveFromLabelsOrSearchFilters() {
+        val page = searchPage("""{"contents":[
+            {"videoRenderer":{"videoId":"ordinary","title":{"simpleText":"LIVE"},"lengthText":{"simpleText":"3:42"}}},
+            {"videoRenderer":{"videoId":"verified","ownerBadges":[{"metadataBadgeRenderer":{
+                "style":"BADGE_STYLE_TYPE_VERIFIED","icon":{"iconType":"CHECK_CIRCLE_THICK"},"tooltip":"LIVE"}}]}},
+            {"videoRenderer":{"videoId":"artist","ownerBadges":[{"metadataBadgeRenderer":{
+                "style":"BADGE_STYLE_TYPE_VERIFIED_ARTIST","icon":{"iconType":"AUDIO_BADGE"}}}]}},
+            {"videoRenderer":{"videoId":"label","badges":[{"metadataBadgeRenderer":{
+                "style":"BADGE_STYLE_TYPE_SIMPLE","label":"LIVE","icon":{"iconType":"OUTLINE_BAG"}}}]}},
+            {"searchFilterGroupRenderer":{"title":{"simpleText":"Features"},"filters":[{"searchFilterRenderer":{
+                "label":{"simpleText":"Live"},"status":"FILTER_STATUS_SELECTED"}}]}}
+        ]}""")
+        assertEquals(4, page.items.size)
+        assertEquals("Live", page.filters.single().title)
+        assertTrue(page.filters.single().selected)
+        assertTrue(page.items.none { it.live })
+        assertEquals("3:42", page.items.first().duration)
+    }
+
     @Test fun readsShortsContentImagesAndFallsBackOnlyWhenMissing() {
         val body = """{"contents":[{"shortsLockupViewModel":{"onTap":{"innertubeCommand":{"reelWatchEndpoint":{"videoId":"abcdefghijk"}}},"contentImage":{"thumbnailViewModel":{"image":{"sources":[{"url":"https://i.ytimg.com/vi/abcdefghijk/oar2.jpg"}]}}}}},{"shortsLockupViewModel":{"onTap":{"innertubeCommand":{"reelWatchEndpoint":{"videoId":"12345678901"}}}}}]}"""
         val items = searchPage(body).items

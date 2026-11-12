@@ -69,7 +69,7 @@ class ParsedWatchCommentsRootTest {
         val http = object : HttpClient {
             override fun execute(request: HttpRequest): HttpReply {
                 requests += request
-                return HttpReply(200, "{}")
+                return HttpReply(200, """{"continuationContents":{"itemSectionContinuation":{"contents":[]}}}""")
             }
         }
         assertEquals("invalid_video_id", loadWatch("bad id", http = http).error!!.code)
@@ -81,7 +81,7 @@ class ParsedWatchCommentsRootTest {
         assertTrue(requests.isEmpty())
 
         for (context in listOf(RequestContext(visitor = "visitor", language = "fr", region = "CA", visitorCookie = "VISITOR_INFO1_LIVE=fixture"),
-            RequestContext(accountId = "account", accessToken = "test-token", visitor = "visitor", onBehalfOfUser = "profile"))) {
+            RequestContext(accountId = "account", webSession = WebSession("SAPISID=test-token"), visitor = "visitor", onBehalfOfUser = "profile"))) {
             val expected = youtubeQuery(YOUTUBE_API + "next", payload("continuation" to "cursor"), context).request()
             val before = requests.size
             // A continuation does not require a video id or an opening request.

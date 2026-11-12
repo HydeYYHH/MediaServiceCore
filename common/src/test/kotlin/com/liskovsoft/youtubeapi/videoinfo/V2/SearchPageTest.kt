@@ -9,7 +9,7 @@ class SearchPageTest {
         assertEquals("a\"b", jsonObject(q.body)!!.text("continuation")); assertFalse(q.body.contains("\"query\""))
     }
     @Test fun distinguishesAnEmptyPageFromFailure() {
-        val empty = object : HttpClient { override fun execute(request: HttpRequest) = HttpReply(200, "{}") }
+        val empty = object : HttpClient { override fun execute(request: HttpRequest) = HttpReply(200, """{"contents":{"twoColumnSearchResultsRenderer":{"primaryContents":{"sectionListRenderer":{"contents":[]}}}}}""") }
         assertTrue(loadSearch("q", http = empty).value!!.items.isEmpty())
         assertEquals(RequestFailure.INVALID, loadSearch("", http = empty).error!!.kind)
     }
@@ -25,14 +25,20 @@ class SearchPageTest {
                 "label":{"simpleText":"This year"},"status":"FILTER_STATUS_SELECTED",
                 "navigationEndpoint":{"searchEndpoint":{"params":"cumulative"}}}}]}},
             {"messageRenderer":{"text":{"simpleText":"Message"}}}]}"""
+        val extracted = jsonObject(body)!!
+        val slots = extracted.arr("contents")
+        val filters = slots.mapNotNull { (it as? Json.Obj)?.obj("searchFilterGroupRenderer") }.single()
+        val wireBody = searchPrimaryWithFilterFixture(Json.Obj(extracted.fields + mapOf(
+            "contents" to Json.Arr(slots.filter { (it as? Json.Obj)?.obj("searchFilterGroupRenderer") == null }),
+            "searchFilterGroupRenderer" to filters)).encode())
         var requests = 0
         val http = object : HttpClient {
             override fun execute(request: HttpRequest): HttpReply {
                 requests++
-                return HttpReply(200, body)
+                return HttpReply(200, wireBody)
             }
         }
-        val parsed = searchPage(body)
+        val parsed = searchPage(wireBody)
         val loaded = loadSearch("q", http = http).value!!
         assertEquals(parsed, loaded)
         assertEquals(1, requests)

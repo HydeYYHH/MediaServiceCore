@@ -38,7 +38,9 @@ fun reelFloorQuery(videoId: String, visitor: String?, cpn: String, t: String): P
     return PlayerQuery("$REEL_URL&t=$t&id=$videoId&\$fields=playerResponse", headers, body)
 }
 
-data class PlayerQuery(val url: String, val headers: Map<String, String>, val body: String)
+data class PlayerQuery(val url: String, val headers: Map<String, String>, val body: String) {
+    override fun toString() = "PlayerQuery(headerCount=${headers.size}, bodyLength=${body.length})"
+}
 
 private class ClientSpec(val name: String, val version: String, val id: String, val agent: String)
 

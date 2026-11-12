@@ -55,6 +55,19 @@ class LoungePairTest {
         assertEquals("ABC DEF GHI JKL", code)
     }
 
+    @Test fun liveBareDecimalResponsePreservesLeadingZeroesAndCompletesBootstrap() {
+        assertEquals("001 234 567 890", pairingCode(" 001234567890\n"))
+        for (invalid in listOf("12345", "12345678901234567", "-123456", "1.23456e8", "123456 trailing", "<html>123456</html>", "１２３４５６"))
+            assertNull(pairingCode(invalid))
+        var calls = 0
+        val code = loadPairing("MSC test", "test-device", { "screen" }) {
+            calls++
+            200 to if (calls == 1) """{"screens":[{"screenId":"screen","loungeToken":"test-token"}]}""" else "001234567890"
+        }
+        assertEquals(2, calls)
+        assertEquals("001 234 567 890", code)
+    }
+
     @Test
     fun blankNameSkipsPost() {
         var called = false

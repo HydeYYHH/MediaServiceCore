@@ -5,6 +5,12 @@ import org.junit.Test
 
 /** Opt-in public reads. No credentials, account mutation, or media-playback claim. */
 class OnlineReadTest {
+    @Test fun loadedCoreComesFromPackagedJar() {
+        assumeTrue(java.lang.Boolean.getBoolean("msc.online"))
+        val expected = java.io.File(requireNotNull(System.getProperty("msc.online.expectedJar"))).canonicalFile
+        val actual = java.io.File(ReadResult::class.java.protectionDomain.codeSource.location.toURI()).canonicalFile
+        assertEquals(expected, actual)
+    }
     @Test fun playerScriptRead() {
         assumeTrue(java.lang.Boolean.getBoolean("msc.online"))
         val result = JvmPlayerScripts().script("jNQXAC9IVRw", RequestContext(), false)

@@ -15,9 +15,15 @@ import java.net.URL
 import java.net.UnknownHostException
 import javax.net.ssl.SSLException
 
-data class HttpRequest(val method: String, val url: String, val headers: Map<String, String> = emptyMap(), val body: String = "")
+data class HttpRequest(val method: String, val url: String, val headers: Map<String, String> = emptyMap(), val body: String = "") {
+    override fun toString(): String {
+        val displayedMethod = if (method in setOf("GET", "POST", "HEAD")) method else "OTHER"
+        return "HttpRequest(method=$displayedMethod, headerCount=${headers.size}, bodyLength=${body.length})"
+    }
+}
 data class HttpReply(val status: Int, val body: String, val headers: Map<String, String> = emptyMap()) {
     fun header(name: String) = headers.entries.firstOrNull { it.key.equals(name, true) }?.value
+    override fun toString() = "HttpReply(status=$status, headerCount=${headers.size}, bodyLength=${body.length})"
 }
 enum class RequestFailure { INVALID, AUTH, HTTP, VERIFICATION, TRANSPORT, PARSE, CANCELLED, UNSUPPORTED }
 data class RequestError(

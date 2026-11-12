@@ -36,7 +36,8 @@ class ParsedBrowseRootTest {
         assertEquals(listOf("Uploads"), expected.page.groups.map { it.title })
         assertEquals(listOf("Videos", "Playlists"), expected.page.tabs.map { it.title })
         assertEquals("opaque-video-params", expected.page.tabs.first().params)
-        assertEquals("next-page", expected.page.nextKey)
+        assertNull(expected.page.nextKey)
+        assertEquals("next-page", expected.page.groups.single().nextKey)
         assertEquals(listOf("Server message"), expected.page.messages)
         assertEquals("fixture-visitor", expected.page.visitor)
         assertTrue(expected.page.actions.isNotEmpty())
@@ -58,15 +59,22 @@ class ParsedBrowseRootTest {
             override fun execute(request: HttpRequest) = HttpReply(status, body)
         }
         assertEquals("unknown_browse_page", loadBrowse("UCfixture", http = http).error!!.code)
-        // Channel reads historically accept a valid object even when its card type is unknown.
-        assertTrue(loadChannel("UCfixture", http = http).ok)
-        for (empty in listOf("{}", """{"responseContext":{}}""", """{"contents":[]}""",
-            """{"continuationContents":{"gridContinuation":{"items":[]}}}""")) {
+        assertEquals("unknown_channel_page", loadChannel("UCfixture", http = http).error!!.code)
+        body = "{}"
+        assertEquals("unknown_browse_page", loadBrowse(null, continuation = "cursor", http = http).error!!.code)
+        for (empty in listOf("""{"responseContext":{}}""", """{"responseContext":{},"trackingParams":"opaque"}""")) {
+            body = empty
+            assertEquals("unknown_browse_page", loadBrowse("UCfixture", http = http).error!!.code)
+            assertTrue(loadBrowse(null, continuation = "cursor", http = http).ok)
+        }
+        for (empty in listOf("""{"contents":[]}""", """{"sectionListRenderer":{"contents":[]}}""")) {
             body = empty
             val loaded = loadBrowse("UCfixture", http = http)
             assertTrue(loaded.ok)
             assertEquals(browsePage(body), loaded.value)
         }
+        body = """{"continuationContents":{"gridContinuation":{"items":[]}}}"""
+        assertTrue(loadBrowse(null, continuation = "cursor", http = http).ok)
         body = "{"
         assertEquals("invalid_json", loadChannel("UCfixture", http = http).error!!.code)
         assertEquals("invalid_json", loadBrowse("UCfixture", http = http).error!!.code)

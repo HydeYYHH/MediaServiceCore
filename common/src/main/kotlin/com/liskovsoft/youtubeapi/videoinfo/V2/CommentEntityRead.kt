@@ -7,6 +7,9 @@ internal fun commentEntityRenderers(root: Json.Obj, section: Json.Obj): List<Jso
     val entities = entityPayloads(root, "commentEntityPayload")
     val states = entityPayloads(root, "commentToolbarStateEntityPayload", "engagementToolbarStateEntityPayload")
     val surfaces = entityPayloads(root, "commentToolbarSurfaceEntityPayload", "engagementToolbarSurfaceEntityPayload")
+    // YouTube.js CommentView.applyMutations/applyCommentsMutations: attachment surfaces have their own key.
+    // Never borrow another comment's attachment merely because it occurs in the same response.
+    val commentSurfaces = root.objects("commentSurfaceEntityPayload").filter { !it.text("key").isNullOrBlank() }
     val views = section.objects("commentViewModel").filter { it.text("commentKey") != null }.distinctBy { it.text("commentKey") }
     val ordered = if (views.isEmpty()) entities.values.map { it to null } else views.mapNotNull { view ->
         entities[view.text("commentKey")]?.let { it to view }
@@ -19,6 +22,9 @@ internal fun commentEntityRenderers(root: Json.Obj, section: Json.Obj): List<Jso
         val toolbar = entity.obj("toolbar")
         val state = states[view?.text("toolbarStateKey")]
         val surface = surfaces[view?.text("toolbarSurfaceKey")]
+        val contentSurface = view?.text("commentSurfaceKey")?.takeIf(String::isNotBlank)?.let { surfaceKey ->
+            commentSurfaces.filter { it.text("key") == surfaceKey }.distinct().singleOrNull()
+        }
         val liked = state?.text("likeState") == "TOOLBAR_LIKE_STATE_LIKED"
         val thread = section.objects("commentThreadRenderer").firstOrNull { commentViewKey(it.obj("commentViewModel") ?: it.obj("comment")) == key }
         val parent = properties.text("parentCommentId") ?: section.objects("commentThreadRenderer").firstNotNull { candidate ->
@@ -46,6 +52,7 @@ internal fun commentEntityRenderers(root: Json.Obj, section: Json.Obj): List<Jso
         author?.text("avatarThumbnailUrl")?.let { fields["authorThumbnail"] = Json.Obj(mapOf("thumbnails" to Json.Arr(listOf(Json.Obj(mapOf("url" to Json.Str(it))))))) }
         parent?.let { fields["parentCommentId"] = Json.Str(it) }
         thread?.obj("replies")?.let { fields["replies"] = it }
+        contentSurface?.let { fields["commentSurface"] = it }
         surface?.let {
             fields["toolbarSurface"] = it
             fields["actionButtons"] = normalizedToolbar(it, state)
@@ -53,6 +60,18 @@ internal fun commentEntityRenderers(root: Json.Obj, section: Json.Obj): List<Jso
         }
         Json.Obj(fields)
     }
+}
+
+internal fun commentImageAttachment(renderer: Json.Obj): CommentImageAttachment? {
+    val image = renderer.path("commentSurface", "imageAttachmentViewModel", "commentImageAttachmentViewModel") ?: return null
+    return CommentImageAttachment(readArtwork(image.obj("image")), image.int("width")?.takeIf { it > 0 },
+        image.int("height")?.takeIf { it > 0 }, image.scalar("aspectRatio")?.toDoubleOrNull()?.takeIf { it.isFinite() && it > 0 },
+        image.display("unavailableText"), image.display("unsupportedText"))
+}
+
+internal fun commentVoiceReply(renderer: Json.Obj): CommentVoiceReply? {
+    val voice = renderer.path("commentSurface", "voiceReplyContainerViewModel", "voiceReplyContainerViewModel") ?: return null
+    return CommentVoiceReply(voice.display("transcriptText"), voice.display("voiceReplyUnavailableText"))
 }
 
 private fun entityPayloads(root: Json.Obj, vararg names: String): Map<String, Json.Obj> {

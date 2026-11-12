@@ -7,6 +7,23 @@ class ChatPageTest {
         assertEquals(listOf("paid","text"),p.messages.map {it.id})
         assertTrue(p.actions[1] is ChatAction.Remove)
     }
+    @Test fun messageMetadataAndAuthorWideRemovalsSurviveParsing() {
+        val page = chatPage("""{"actions":[
+          {"liveChatTextMessageRenderer":{"id":"message","authorName":{"simpleText":"Owner"},
+            "authorPhoto":{"thumbnails":[{"url":"https://yt3.example/avatar"}]},
+            "authorExternalChannelId":"channel","message":{"simpleText":"Hello"},"timestampUsec":"123456"}},
+          {"markChatItemsByAuthorAsDeletedAction":{"externalChannelId":"channel"}}]}""")
+        val message = page.messages.single()
+        assertEquals("Owner", message.author)
+        assertEquals("liveChatTextMessageRenderer", message.kind)
+        assertEquals("https://yt3.example/avatar", message.photo)
+        assertEquals(123456L, message.timestampUs)
+        assertEquals("channel", message.authorId)
+        val removal = page.removals.single()
+        assertNull(removal.messageId)
+        assertEquals(message.authorId, removal.authorId)
+        assertTrue(page.actions.last() is ChatAction.Remove)
+    }
     @Test fun readsMessagesRemovalsAndTheServersDelay() {
         val page=chatPage("""{"continuationContents":{"liveChatContinuation":{"actions":[{"addChatItemAction":{"item":{"liveChatTextMessageRenderer":{"id":"m","message":{"runs":[{"text":"Hi"}]},"timestampUsec":"123"}}}},{"markChatItemAsDeletedAction":{"targetItemId":"old"}}],"continuations":[{"timedContinuationData":{"continuation":"next","timeoutMs":2500}}]}}}""")
         assertEquals("Hi",page.messages.single().text);assertEquals("old",page.removals.single().messageId)

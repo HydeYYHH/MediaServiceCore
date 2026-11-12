@@ -12,7 +12,7 @@ class WebSessionTest {
     }
     @Test fun sessionsNeverRevealCredentialsInStringRepresentations() {
         val session = WebSession("SAPISID=private", 1)
-        val context = RequestContext(accessToken = "bearer", webSession = session)
+        val context = RequestContext(webSession = session)
         assertFalse(session.toString().contains("private"))
         assertFalse(context.toString().contains("bearer"))
         assertFalse(context.toString().contains("private"))

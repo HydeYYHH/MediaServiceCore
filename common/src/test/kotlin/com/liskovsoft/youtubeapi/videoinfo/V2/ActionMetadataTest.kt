@@ -9,7 +9,7 @@ class ActionMetadataTest {
     private val key = "EgthYmNkZWZnaGlqayA-KAE%3D"
 
     @Test fun unconfirmedActionsExposeOnlyAllowlistedProtocolAndTargetStateDetails() {
-        val context = RequestContext(accessToken = "secret-token", onBehalfOfUser = "private-account")
+        val context = RequestContext(webSession = WebSession("SAPISID=secret-token"), onBehalfOfUser = "private-account")
         val http = object : HttpClient {
             override fun execute(request: HttpRequest) = HttpReply(200, """{"responseContext":{"private":"secret-response"},
                 "frameworkUpdates":{"entityBatchUpdate":{"mutations":[{"entityKey":"$key",
@@ -18,8 +18,8 @@ class ActionMetadataTest {
         }
         val reply = voteVideo(videoId, VideoVote.LIKE, context, http).value!!
         assertFalse(reply.confirmed)
-        assertEquals(mapOf("request_client" to "TVHTML5", "request_auth" to "oauth", "request_delegated" to "true",
-            "request_client_version" to "7.20260901.15.00", "request_action_context" to "complete",
+        assertEquals(mapOf("request_client" to "WEB", "request_auth" to "web", "request_delegated" to "true",
+            "request_client_version" to "2.20260907.06.00", "request_action_context" to "other",
             "response_signed_in" to "unknown",
             "target_entity_kind" to "like_status", "target_entity_state" to "INDIFFERENT",
             "target_entity_mutation" to "replace"), reply.metadata)
@@ -77,7 +77,7 @@ class ActionMetadataTest {
             override fun execute(request: HttpRequest) = HttpReply(200,
                 """{"responseContext":{"mainAppWebResponseContext":{"loggedOut":true}},"frameworkUpdates":{}}""")
         }
-        val reply = voteVideo(videoId, VideoVote.LIKE, RequestContext(accessToken = "private-token"), http).value!!
+        val reply = voteVideo(videoId, VideoVote.LIKE, RequestContext(webSession = WebSession("SAPISID=private-token")), http).value!!
         assertFalse(reply.confirmed)
         assertEquals("false", reply.metadata["response_signed_in"])
     }
@@ -89,7 +89,7 @@ class ActionMetadataTest {
                 override fun execute(request: HttpRequest) = HttpReply(200,
                     """{"frameworkUpdates":{"entityBatchUpdate":{"mutations":$mutations}}}""")
             }
-            val reply = voteVideo(videoId, VideoVote.LIKE, RequestContext(accessToken = "token"), http).value!!
+            val reply = voteVideo(videoId, VideoVote.LIKE, RequestContext(webSession = WebSession("SAPISID=token")), http).value!!
             assertFalse(reply.confirmed)
             assertEquals("unknown", reply.metadata["target_entity_state"])
             assertEquals(expected, reply.metadata["target_entity_mutation"])

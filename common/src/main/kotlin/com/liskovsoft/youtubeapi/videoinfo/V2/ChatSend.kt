@@ -1,7 +1,7 @@
 package com.liskovsoft.youtubeapi.videoinfo.V2
 
-// Write operation: never retry automatically. Live probes require explicit opt-in.
-fun sendChatMessage(params: String, text: String, context: RequestContext, http: HttpClient = JvmHttpClient(),
+// Message writes are never retried automatically.
+internal fun sendChatMessage(params: String, text: String, context: RequestContext, http: HttpClient = JvmHttpClient(),
     clientMessageId: String = java.util.UUID.randomUUID().toString()): ReadResult<ActionReply> {
     if (params.isBlank()) return ReadResult(error = RequestError(RequestFailure.INVALID, "missing_chat_key"))
     val message = text.trim()
@@ -29,10 +29,32 @@ fun sendChatMessage(params: String, text: String, context: RequestContext, http:
     val rejection = root?.obj("errorMessage")?.objects("liveChatTextActionsErrorMessageRenderer")?.firstOrNull()?.display("errorText")
     if (!rejection.isNullOrBlank()) return ReadResult(error = RequestError(RequestFailure.HTTP,
         "chat_message_rejected", value.httpStatus, detail = rejection.take(300)))
-    // HTTP success can also carry an attestation challenge or a refusal. Only a
-    // server-issued message entity confirms posting; never clear a draft otherwise.
-    val echoed = root?.objects("addChatItemAction")?.any { action ->
-        action.obj("item")?.objects("liveChatTextMessageRenderer")?.any { !it.text("id").isNullOrBlank() } == true
+    // Only a matching message in the endpoint's action list acknowledges this
+    // submission. Unrelated/nested entities must not clear the caller's draft.
+    val echoed = root?.let { response ->
+        response.arr("actions").any { entry ->
+            val action = (entry as? Json.Obj)?.obj("addChatItemAction") ?: return@any false
+            val item = action.obj("item") ?: return@any false
+            val entity = item.obj("liveChatTextMessageRenderer") ?: return@any false
+            val returnedIds = listOf(response, action, item, entity).mapNotNull { it.fields["clientMessageId"] }
+            !entity.text("id").isNullOrBlank() && entity.display("message") == message &&
+                returnedIds.all { (it as? Json.Str)?.value == clientMessageId }
+        }
     } == true
     return ReadResult(value.copy(state = if (echoed) ActionState.CONFIRMED else ActionState.UNCONFIRMED))
+}
+
+/** Address parameters belong to the account/channel that read the chat. The service enforces permission. */
+class ChatSender internal constructor(private val params: String, private val binding: ChatSessionBinding,
+    private val postingError: () -> RequestError?) {
+
+    fun send(text: String, http: HttpClient = JvmHttpClient(),
+        clientMessageId: String = java.util.UUID.randomUUID().toString()): ReadResult<ActionReply> {
+        val context = binding.snapshot()
+        if (!context.ok) return ReadResult(error = context.error)
+        postingError()?.let { return ReadResult(error = it) }
+        val result = sendChatMessage(params, text, context.value!!, http, clientMessageId)
+        val current = binding.snapshot()
+        return if (!current.ok) ReadResult(error = current.error) else result
+    }
 }

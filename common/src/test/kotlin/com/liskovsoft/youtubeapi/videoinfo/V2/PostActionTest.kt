@@ -21,7 +21,7 @@ class PostActionTest {
     }
 
     @Test fun authorizedPostCommentsStayWebAndRetainTheirActionTokens() {
-        val context = RequestContext(accessToken = "oauth", webSession = WebSession("SAPISID=fixture"), generation = 4)
+        val context = RequestContext(webSession = WebSession("SAPISID=fixture"), generation = 4)
         var called = false
         val reply = loadPostComments("comments", context, object : HttpClient {
             override fun execute(request: HttpRequest): HttpReply {
@@ -29,11 +29,25 @@ class PostActionTest {
                 assertTrue(request.body.contains("\"clientName\":\"WEB\""))
                 assertTrue(request.headers["Authorization"]!!.startsWith("SAPISIDHASH "))
                 assertEquals("SAPISID=fixture", request.headers["Cookie"])
-                return HttpReply(200, """{"createCommentParams":"CREATE"}""")
+                return HttpReply(200, """{"createCommentParams":"CREATE","continuationContents":{"itemSectionContinuation":{"contents":[]}}}""")
             }
         })
         assertTrue(called)
         assertEquals("CREATE", reply.value?.createKey)
+    }
+
+    @Test fun aBareCreationTokenWithoutAnOwnedCommentCollectionDoesNotGrantPostCreation() {
+        var calls = 0
+        val reply = loadPostComments("comments", RequestContext(webSession = WebSession("SAPISID=fixture")), object : HttpClient {
+            override fun execute(request: HttpRequest): HttpReply {
+                calls++
+                return HttpReply(200, """{"createCommentParams":"UNSCOPED_CREATE"}""")
+            }
+        })
+        assertEquals(1, calls)
+        assertFalse(reply.ok)
+        assertEquals(RequestFailure.PARSE, reply.error?.kind)
+        assertNull(reply.value)
     }
 
     @Test fun pollFeedbackRequiresExplicitSuccessAndDoesNotTreatHttp200AsConfirmation() {

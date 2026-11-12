@@ -10,7 +10,7 @@ class ChannelBrowseTest {
         assertEquals("", channelQuery("bad/id").url)
     }
 
-    /** Live 2026-10 structure: the header wraps the view model, pageHeaderRenderer.content.pageHeaderViewModel. */
+    /** The header wraps its view model under pageHeaderRenderer.content.pageHeaderViewModel. */
     @Test fun readsTheWrappedPageHeaderRendererChannelHeader() {
         val page = channelPage("""{"header":{"pageHeaderRenderer":{"pageTitle":"Wrapped","content":{"pageHeaderViewModel":{"title":{"dynamicTextViewModel":{"text":{"content":"Wrapped"}}},"image":{"decoratedAvatarViewModel":{"avatar":{"avatarViewModel":{"image":{"sources":[{"url":"https://yt3.googleusercontent.com/avatar=s120"}]}}}}},"metadata":{"contentMetadataViewModel":{"metadataRows":[{"metadataParts":[{"text":{"content":"@handle"}}]},{"metadataParts":[{"text":{"content":"2.68M subscribers"}},{"text":{"content":"6.1K videos"}}]}]}},"banner":{"imageBannerViewModel":{"image":{"sources":[{"url":"https://yt3.googleusercontent.com/banner=s170"}]}}}}}}}}""".trimIndent())
         assertEquals("Wrapped", page.title)

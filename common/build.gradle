@@ -43,6 +43,7 @@ sourceSets {
         runtimeClasspath = output + compileClasspath
     }
 }
+
 compileConsumerJava.dependsOn jar
 task verifyStandalone(type: JavaExec) {
     dependsOn compileConsumerJava
@@ -53,11 +54,12 @@ check.dependsOn verifyStandalone
 
 test { exclude '**/OnlineReadTest.class' }
 task onlineReadTest(type: Test) {
-    dependsOn testClasses
+    dependsOn testClasses, jar
     testClassesDirs = sourceSets.test.output.classesDirs
-    classpath = sourceSets.test.runtimeClasspath
+    classpath = sourceSets.test.output + configurations.testRuntimeClasspath + files(jar.archiveFile)
     include '**/OnlineReadTest.class'
     systemProperty 'msc.online', 'true'
+    systemProperty 'msc.online.expectedJar', jar.archiveFile.get().asFile.absolutePath
 }
 
 publishing {

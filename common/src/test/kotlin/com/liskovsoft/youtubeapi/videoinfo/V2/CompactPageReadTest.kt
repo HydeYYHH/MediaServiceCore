@@ -5,7 +5,7 @@ import org.junit.Test
 
 class CompactPageReadTest {
     @Test fun compactPageUrlsPreserveOtherParametersFragmentsHeadersAndBodies() {
-        val headers = mapOf("Authorization" to "Bearer test-token")
+        val headers = mapOf("Authorization" to "SAPISIDHASH fixture-signature")
         val original = PlayerQuery(YOUTUBE_API + "browse?key=a%2Bb&fields=a%23b#section?part", headers, "{\"preserved\":true}")
         val compact = original.withCompactResponse()
         assertEquals(YOUTUBE_API + "browse?key=a%2Bb&fields=a%23b&prettyPrint=false#section?part", compact.url)
@@ -26,20 +26,19 @@ class CompactPageReadTest {
         }
     }
 
-    @Test fun browseAndBothSearchAuthenticationAttemptsRequestCompactPagesOnly() {
+    @Test fun browseAndFailedAuthenticatedSearchRequestCompactPagesWithoutAnonymousRetry() {
         val requests = mutableListOf<HttpRequest>()
         val http = object : HttpClient {
             override fun execute(request: HttpRequest): HttpReply {
                 requests += request
-                return if (requests.size == 2) HttpReply(401, "{}") else HttpReply(200, "{}")
+                return if (requests.size == 2) HttpReply(401, "{}") else HttpReply(200, """{"contents":{"sectionListRenderer":{"contents":[]}}}""")
             }
         }
         assertTrue(loadBrowse("channel", http = http).ok)
-        assertTrue(loadSearch("q", RequestContext("account", "token", "visitor"), http = http).ok)
-        assertEquals(3, requests.size)
+        assertEquals(RequestFailure.AUTH, loadSearch("q", RequestContext(accountId = "account", webSession = WebSession("SAPISID=token"), visitor = "visitor"), http = http).error!!.kind)
+        assertEquals(2, requests.size)
         assertTrue(requests.all { urlParameter(it.url, "prettyPrint") == "false" })
         assertNotNull(requests[1].headers["Authorization"])
-        assertNull(requests[2].headers["Authorization"])
         // The generic transport keeps its existing URL, including non-page consumers.
         requestObject(searchQuery("q"), http)
         assertFalse(requests.last().url.contains("prettyPrint"))
@@ -54,7 +53,7 @@ class CompactPageReadTest {
                 return HttpReply(200, when {
                     request.method == "GET" -> "<script>var ytInitialData = $seed;</script>"
                     request.url.contains("reel_watch_sequence") -> seed
-                    else -> "{}"
+                    else -> """{"contents":{"sectionListRenderer":{"contents":[]}}}"""
                 })
             }
         }
@@ -69,7 +68,7 @@ class CompactPageReadTest {
     }
 
     @Test fun sharedSubscriptionsBrowseRequestsCompactJsonAndRetainsBothConsumers() {
-        val context = RequestContext("account", "token", "visitor", "zh", "TW", 7, "brand")
+        val context = RequestContext(accountId = "account", webSession = WebSession("SAPISID=token"), visitor = "visitor", language = "zh", region = "TW", generation = 7, onBehalfOfUser = "brand")
         val expected = browseQuery(LibrarySection.SUBSCRIPTIONS.browseId, context).request()
         val body = """{"contents":{"twoColumnBrowseResultsRenderer":{"tabs":[{"tabRenderer":{
             "title":"Ada","endpoint":{"browseEndpoint":{"browseId":"UCada","params":"channel-filter"}},
@@ -92,11 +91,13 @@ class CompactPageReadTest {
     }
 
     @Test fun channelPostsRequestCompactJsonWithoutChangingIdentityPayloadOrContinuation() {
-        val context = RequestContext("account", "token", "visitor", "ja", "JP", 8, "brand")
-        val body = """{"backstagePostRenderer":{"postId":"post-id","authorText":{"simpleText":"Ada"},
-            "contentText":{"runs":[{"text":"Post body"}]},"voteCount":{"simpleText":"12"}},
-            "continuationItemRenderer":{"continuationEndpoint":{"continuationCommand":{"token":"next-posts"}}}}"""
+        val context = RequestContext(accountId = "account", webSession = WebSession("SAPISID=token"), visitor = "visitor", language = "ja", region = "JP", generation = 8, onBehalfOfUser = "brand")
+        val items = """{"backstagePostRenderer":{"postId":"post-id","authorText":{"simpleText":"Ada"},
+            "contentText":{"runs":[{"text":"Post body"}]},"voteCount":{"simpleText":"12"}}},
+            {"continuationItemRenderer":{"continuationEndpoint":{"continuationCommand":{"token":"next-posts"}}}}"""
         for (cursor in listOf(null, "posts-cursor")) {
+            val body = if (cursor == null) """{"contents":[$items]}"""
+                else """{"continuationContents":{"sectionListContinuation":{"contents":[$items]}}}"""
             val expected = channelQuery("UCada", context, "posts-params", cursor).request()
             var calls = 0
             val http = object : HttpClient {

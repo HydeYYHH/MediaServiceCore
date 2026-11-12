@@ -36,9 +36,10 @@ class PlayerAccessRestrictionTest {
                     """{"playabilityStatus":{"status":"UNPLAYABLE","reason":"This video requires payment to watch"}}"""
                 else """{"playabilityStatus":{"status":"OK"},"streamingData":{"formats":[{"url":"https://media.example.test/movie.mp4"}]}}""")
         }
-        val result = loadPlayer("video", RequestContext(accessToken = "fixture"), http, onAttempt = attempts::add)
+        val result = loadPlayer("video", RequestContext(webSession = WebSession("SAPISID=fixture")), http,
+            queues = PlayerClientQueues(PlayerClient.VISIONOS), onAttempt = attempts::add)
         assertTrue(result.ok)
-        assertEquals(PlayerClient.TV_TIZEN, result.value?.client)
+        assertEquals(PlayerClient.WEB_SAFARI, result.value?.client)
         assertEquals(PlayerAccessRestriction.PAYMENT_REQUIRED, attempts.first().restriction)
         assertFalse(attempts.first().authenticated)
         assertTrue(attempts.last().authenticated)

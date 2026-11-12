@@ -70,7 +70,7 @@ class TrafficChallengeTest {
             calls++
             return HttpReply(302, "", mapOf("Location" to "https://www.google.com/sorry/index?q=x"))
         }}
-        val result = loadSearch("q", RequestContext("account", "secret", "visitor"), http = http)
+        val result = loadSearch("q", RequestContext(accountId = "account", webSession = WebSession("SAPISID=secret"), visitor = "visitor"), http = http)
         assertFalse(result.ok)
         assertEquals(RequestFailure.VERIFICATION, result.error!!.kind)
         assertEquals(1, calls)

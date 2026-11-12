@@ -19,7 +19,7 @@ class ChannelAvatarTest {
 
     @Test fun publicMetadataReadsAreSmallAndIndependentOfAccountCredentials() {
         val http = Replies(200 to music)
-        val reply = loadChannelAvatar("UCabc", RequestContext(accountId = "account", accessToken = "secret",
+        val reply = loadChannelAvatar("UCabc", RequestContext(accountId = "account", webSession = WebSession("SAPISID=secret"),
             onBehalfOfUser = "page", visitor = "visitor", language = "zh", region = "TW"), http)
         assertEquals("https://yt3.googleusercontent.com/avatar=s160", reply.value)
         val request = http.requests.single()

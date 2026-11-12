@@ -4,8 +4,8 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class ChatAccountIdentityTest {
-    @Test fun cookieAndOauthSessionsUseTheSameIdentityRenderer() {
-        for (context in listOf(RequestContext(accessToken = "oauth"), RequestContext(webSession = WebSession("SAPISID=secret")))) {
+    @Test fun cookieProfilesUseTheStableIdentityRenderer() {
+        for (context in listOf(RequestContext(webSession = WebSession("SAPISID=first")), RequestContext(webSession = WebSession("SAPISID=secret")))) {
             val result = loadActiveAccount(context, object : HttpClient {
                 override fun execute(request: HttpRequest): HttpReply {
                     assertEquals("TVHTML5", jsonObject(request.body)!!.path("context", "client")!!.text("clientName"))
@@ -28,7 +28,7 @@ class ChatAccountIdentityTest {
         }
         assertEquals(RequestFailure.AUTH, loadActiveAccount(RequestContext(), http).error?.kind)
         assertEquals(0, calls)
-        assertEquals("missing_active_account", loadActiveAccount(RequestContext(accessToken = "oauth"), http).error?.code)
+        assertEquals("missing_active_account", loadActiveAccount(RequestContext(webSession = WebSession("SAPISID=first")), http).error?.code)
         assertEquals(1, calls)
     }
 }

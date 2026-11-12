@@ -4,20 +4,7 @@ internal fun initialDataDocument(html: String): Json.Obj? {
     val match = Regex("(?:var\\s+)?ytInitialData\\s*=\\s*|window\\[\"ytInitialData\"\\]\\s*=\\s*").find(html) ?: return null
     val tail = html.substring(match.range.last + 1).trimStart()
     if (tail.startsWith("{") ) {
-        var depth = 0
-        var quoted = false
-        var escaped = false
-        for (i in tail.indices) {
-            val c = tail[i]
-            if (quoted) {
-                if (escaped) escaped = false else if (c == '\\') escaped = true else if (c == '"') quoted = false
-            } else when (c) {
-                '"' -> quoted = true
-                '{' -> depth++
-                '}' -> if (--depth == 0) return jsonObject(tail.substring(0, i + 1))
-            }
-        }
-        return null
+        return documentJsonObject(tail)?.first
     }
     val quote = tail.firstOrNull()?.takeIf { it == '\'' || it == '"' } ?: return null
     val decoded = StringBuilder()
@@ -47,8 +34,18 @@ internal fun initialDataDocument(html: String): Json.Obj? {
 }
 
 internal fun loadShortsDocument(context: RequestContext, http: HttpClient): ReadResult<BrowsePage> {
-    val reply = requestBody(HttpRequest("GET", "https://m.youtube.com/shorts?hl=${java.net.URLEncoder.encode(context.language, "UTF-8")}",
-        mapOf("User-Agent" to "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Chrome/120.0 Mobile Safari/537.36")), http)
+    // The mobile document accepts browser cookies, but rejects the www API's
+    // SAPISIDHASH/Origin headers. authuser selects the cookie jar's Google account.
+    // No document protocol has established delegated channel selection yet.
+    if (context.onBehalfOfUser != null) return ReadResult(error = RequestError(RequestFailure.UNSUPPORTED,
+        "shorts_brand_document_identity_unsupported"))
+    val session = context.webSession?.takeIf { it.signedIn }
+    val cookies = session?.cookies ?: context.visitorCookie?.takeIf { it.isNotBlank() }
+    val headers = mapOf("User-Agent" to "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Chrome/120.0 Mobile Safari/537.36") +
+        cookies?.let { mapOf("Cookie" to it) }.orEmpty()
+    val url = "https://m.youtube.com/shorts?hl=${java.net.URLEncoder.encode(context.language, "UTF-8")}" +
+        session?.let { "&authuser=${it.accountIndex}" }.orEmpty()
+    val reply = requestBody(HttpRequest("GET", url, headers), http)
     if (!reply.ok) return ReadResult(error = reply.error)
     val root = initialDataDocument(reply.value!!) ?: return ReadResult(error = RequestError(RequestFailure.PARSE, "missing_shorts_data"))
     return readShorts(root)

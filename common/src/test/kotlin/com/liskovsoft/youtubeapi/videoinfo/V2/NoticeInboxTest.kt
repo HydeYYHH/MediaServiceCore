@@ -39,12 +39,15 @@ class NoticeInboxTest {
 
     @Test
     fun loadsTheInbox() {
-        val parsed = loadNotices("visitor-1") { query ->
+        val parsed = loadNotices(RequestContext(visitor = "visitor-1", webSession = WebSession("SAPISID=fixture")), http = object : HttpClient {
+            override fun execute(request: HttpRequest): HttpReply {
+            val query = PlayerQuery(request.url, request.headers, request.body)
             assertTrue(query.url.contains("/notification/get_notification_menu"))
             assertEquals("visitor-1", query.headers["X-Goog-Visitor-Id"])
             assertTrue(query.body.contains("\"notificationsMenuRequestType\":\"NOTIFICATIONS_MENU_REQUEST_TYPE_INBOX\""))
-            Pair(200, inbox)
-        }
+            return HttpReply(200, inbox)
+            }
+        }).value!!.notices
         assertEquals(1, parsed.size)
         val notice = parsed[0]
         assertEquals("dQw4w9WgXcQ", notice.videoId)
@@ -56,25 +59,20 @@ class NoticeInboxTest {
         assertEquals("HIDE_ME", notice.hideKey)
     }
 
-    @Test
-    fun hidesANotice() {
-        val ok = hideNotice("HIDE_ME", null) { query ->
-            assertTrue(query.url.contains("/notification/record_interactions"))
-            assertTrue(query.body.contains("\"serializedRecordNotificationInteractionsRequest\":\"HIDE_ME\""))
-            Pair(200, "")
+    @Test fun hidesOnlyWithAnExplicitServerAcknowledgement() {
+        val context = RequestContext(webSession = WebSession("SAPISID=fixture"))
+        var calls = 0
+        val http = object : HttpClient {
+            override fun execute(request: HttpRequest): HttpReply {
+                calls++
+                assertTrue(request.url.endsWith("/notification/record_interactions"))
+                assertEquals("HIDE_ME", jsonObject(request.body)!!.text("serializedRecordNotificationInteractionsRequest"))
+                return HttpReply(200, """{"success":true}""")
+            }
         }
-        assertTrue(ok)
-    }
-
-    @Test
-    fun emptyHideKeySkipsPost() {
-        var called = false
-        val ok = hideNotice("", null) {
-            called = true
-            Pair(200, "")
-        }
-        assertFalse(called)
-        assertFalse(ok)
+        assertTrue(hideNotice("HIDE_ME", context, http).value!!.confirmed)
+        assertEquals("missing_notification_token", hideNotice("", context, http).error!!.code)
+        assertEquals(1, calls)
     }
 
     @Test
@@ -89,25 +87,19 @@ class NoticeInboxTest {
         assertFalse(states[1].selected)
     }
 
-    @Test
-    fun setsANoticeState() {
-        val ok = setNoticeState("ALL", null) { query ->
-            assertTrue(query.url.contains("/notification/modify_channel_preference"))
-            assertTrue(query.body.contains("\"params\":\"ALL\""))
-            Pair(200, "")
+    @Test fun setsANoticeStateAndRejectsMissingParameters() {
+        val context = RequestContext(webSession = WebSession("SAPISID=fixture"))
+        var calls = 0
+        val http = object : HttpClient {
+            override fun execute(request: HttpRequest): HttpReply {
+                calls++
+                assertTrue(request.url.endsWith("/notification/modify_channel_preference"))
+                assertEquals("ALL", jsonObject(request.body)!!.text("params"))
+                return HttpReply(200, """{"success":true}""")
+            }
         }
-        assertTrue(ok)
-    }
-
-    @Test
-    fun blankParamsSkipPost() {
-        var called = false
-        val ok = setNoticeState(" \n", null) {
-            called = true
-            Pair(200, "")
-        }
-        assertFalse(called)
-        assertFalse(ok)
-        assertNull(notices("{}").firstOrNull())
+        assertTrue(setNoticeState("ALL", context, http).value!!.confirmed)
+        assertEquals("missing_notification_params", setNoticeState(" ", context, http).error!!.code)
+        assertEquals(1, calls)
     }
 }

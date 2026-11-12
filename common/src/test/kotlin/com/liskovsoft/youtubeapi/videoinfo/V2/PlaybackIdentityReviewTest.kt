@@ -82,21 +82,24 @@ class PlaybackIdentityReviewTest {
         assertTrue(first!!.headers["Authorization"]!!.startsWith("SAPISIDHASH "))
     }
 
-    @Test fun bearerIdentityOnlyReachesTheSupportedClient() {
+    @Test fun theWebPlayerRetainsTheSelectedBrandAndGoogleAccountIndex() {
         val requests = mutableListOf<HttpRequest>()
         val http = object : HttpClient {
             override fun execute(request: HttpRequest): HttpReply {
                 requests += request
-                val authenticated = request.headers["Authorization"] == "Bearer fixture"
+                val authenticated = request.headers["Cookie"] == "SAPISID=fixture"
                 return HttpReply(200, if (authenticated)
                     """{"streamingData":{"formats":[{"url":"https://media","mimeType":"video/mp4"}]}}"""
                     else """{"playabilityStatus":{"status":"LOGIN_REQUIRED"}}""")
             }
         }
-        assertTrue(loadPlayer("video", RequestContext(accessToken = "fixture"), http).ok)
+        assertTrue(loadPlayer("video", RequestContext(accountId = "brand", onBehalfOfUser = "brand",
+            webSession = WebSession("SAPISID=fixture", 2)), http).ok)
         assertEquals(1, requests.count { it.headers.containsKey("Authorization") })
-        assertTrue(requests.last().body.contains("TVHTML5"))
-        assertFalse(requests.any { it.headers.containsKey("Cookie") })
+        assertTrue(requests.single().body.contains("\"clientName\":\"WEB\""))
+        assertEquals("2", requests.single().headers["X-Goog-AuthUser"])
+        assertEquals("brand", requests.single().headers["X-Goog-PageId"])
+        assertEquals("brand", jsonObject(requests.single().body)!!.path("context", "user")!!.text("onBehalfOfUser"))
     }
 
     @Test fun aMuxedFallbackCannotBorrowAnotherVideosMediaOrExtendExpiry() {

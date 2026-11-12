@@ -45,26 +45,82 @@ class ChatPostingTest {
         }
     }
 
-    private fun send(response: String, status: Int = 200) = sendChatMessage("address", "hello", RequestContext("viewer", "token"),
-        object : HttpClient { override fun execute(request: HttpRequest) = HttpReply(status, response) })
+    private fun send(response: String, status: Int = 200) = sendChatMessage("address", "hello", RequestContext(accountId = "viewer", webSession = WebSession("SAPISID=fixture")),
+        object : HttpClient { override fun execute(request: HttpRequest) = HttpReply(status, response) }, clientMessageId = "fixed-id")
 
     @Test fun onlyARealMessageEntityConfirmsPosting() {
         val accepted = send("""{"actions":[{"addChatItemAction":{"item":{"liveChatTextMessageRenderer":{"id":"server-id","message":{"runs":[{"text":"hello"}]}}}}}]}""")
         assertTrue(accepted.value!!.confirmed)
         for (response in listOf("{}", """{"status":"SUCCESS"}""",
             """{"actions":[{"addChatItemAction":{}}]}""",
-            """{"actions":[{"addChatItemAction":{"item":{"liveChatTextMessageRenderer":{"id":""}}}}]}""",
-            """{"actions":[{"runAttestationCommand":{"challenge":"challenge"}}]}""")) {
+            """{"actions":[{"addChatItemAction":{"item":{"liveChatTextMessageRenderer":{"id":""}}}}]}""")) {
             assertFalse(response, send(response).value!!.confirmed)
         }
         assertFalse(send("""{"error":{"code":403,"message":"Posting restricted"}}""", 403).ok)
+    }
+
+    @Test fun attestationRequiresHostVerificationEvenWhenAResponseAlsoContainsTheSubmittedMessage() {
+        val challenge = """{"runAttestationCommand":{"challenge":"synthetic-challenge"}}"""
+        val message = """{"addChatItemAction":{"item":{"liveChatTextMessageRenderer":{
+            "id":"server-id","message":{"simpleText":"hello"}}}}}"""
+        for (actions in listOf(challenge, "$message,$challenge")) {
+            var calls = 0
+            val result = sendChatMessage("address", "hello", RequestContext(webSession = WebSession("SAPISID=fixture")),
+                object : HttpClient {
+                    override fun execute(request: HttpRequest): HttpReply {
+                        calls++
+                        return HttpReply(200, """{"actions":[$actions]}""")
+                    }
+                })
+            assertNull(result.value)
+            assertEquals(RequestFailure.VERIFICATION, result.error?.kind)
+            assertEquals("attestation_required", result.error?.code)
+            assertEquals(200, result.error?.status)
+            assertEquals(1, calls)
+        }
+    }
+
+    @Test fun unrelatedTextAndNestedEntitiesNeverAcknowledgeTheSubmittedMessage() {
+        val entity = """{"id":"server-id","message":{"simpleText":"hello"}}"""
+        for (response in listOf(
+            """{"actions":[{"addChatItemAction":{"item":{"liveChatTextMessageRenderer":{"id":"other","message":{"simpleText":"different text"}}}}}]}""",
+            """{"diagnostics":{"addChatItemAction":{"item":{"liveChatTextMessageRenderer":$entity}}}}""",
+            """{"actions":[{"futureAction":{"addChatItemAction":{"item":{"liveChatTextMessageRenderer":$entity}}}}]}""",
+            """{"actions":[{"addChatItemAction":{"item":{"futureWrapper":{"liveChatTextMessageRenderer":$entity}}}}]}""",
+        )) {
+            val result = send(response)
+            assertTrue(response, result.ok)
+            assertFalse(response, result.value!!.confirmed)
+        }
+    }
+
+    @Test fun acknowledgementsMatchAnyReturnedClientMessageIdAndTheTrimmedSubmission() {
+        val entity = """{"id":"server-id","message":{"runs":[{"text":"hel"},{"text":"lo"}]}}"""
+        val scopes = listOf<(String) -> String>(
+            { id -> """{"clientMessageId":$id,"actions":[{"addChatItemAction":{"item":{"liveChatTextMessageRenderer":$entity}}}]}""" },
+            { id -> """{"actions":[{"addChatItemAction":{"clientMessageId":$id,"item":{"liveChatTextMessageRenderer":$entity}}}]}""" },
+            { id -> """{"actions":[{"addChatItemAction":{"item":{"clientMessageId":$id,"liveChatTextMessageRenderer":$entity}}}]}""" },
+            { id -> """{"actions":[{"addChatItemAction":{"item":{"liveChatTextMessageRenderer":{"clientMessageId":$id,"id":"server-id","message":{"simpleText":"hello"}}}}}]}""" },
+        )
+        for (response in scopes) {
+            assertTrue(send(response(jsonQuote("fixed-id"))).value!!.confirmed)
+            assertFalse(send(response(jsonQuote("another-submission"))).value!!.confirmed)
+            assertFalse(send(response("null")).value!!.confirmed)
+        }
+        val trimmed = sendChatMessage("address", "  hello\n", RequestContext(webSession = WebSession("SAPISID=fixture")),
+            object : HttpClient { override fun execute(request: HttpRequest): HttpReply {
+                val segment = jsonObject(request.body)!!.path("richMessage")!!.arr("textSegments").single() as Json.Obj
+                assertEquals("hello", segment.text("text"))
+                return HttpReply(200, """{"actions":[{"addChatItemAction":{"item":{"liveChatTextMessageRenderer":$entity}}}]}""")
+            } })
+        assertTrue(trimmed.value!!.confirmed)
     }
 
     @Test fun requestUsesTextSegmentsAndNeverAnAnonymousWrite() {
         var calls = 0
         val http = object : HttpClient { override fun execute(request: HttpRequest): HttpReply {
             calls++
-            assertEquals("Bearer token", request.headers["Authorization"])
+            assertTrue(request.headers["Authorization"]!!.startsWith("SAPISIDHASH "))
             val body = jsonObject(request.body)!!
             assertEquals("address", body.text("params"))
             val rich = body.path("richMessage")!!
@@ -72,7 +128,7 @@ class ChatPostingTest {
             assertEquals("你好 \"chat\"\nnext", (rich.arr("textSegments").single() as Json.Obj).text("text"))
             return HttpReply(200, "{}")
         } }
-        sendChatMessage("address", "  你好 \"chat\"\nnext  ", RequestContext("viewer", "token"), http)
+        sendChatMessage("address", "  你好 \"chat\"\nnext  ", RequestContext(accountId = "viewer", webSession = WebSession("SAPISID=fixture")), http)
         assertEquals(1, calls)
         assertFalse(sendChatMessage("address", "hello", RequestContext(), http).ok)
         assertEquals(1, calls)

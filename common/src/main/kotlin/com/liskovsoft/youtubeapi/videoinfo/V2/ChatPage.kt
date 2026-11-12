@@ -52,42 +52,143 @@ fun chatPage(body: String): ChatPage {
 fun loadChat(continuation: String, context: RequestContext = RequestContext(), http: HttpClient = JvmHttpClient()): ReadResult<ChatPage> {
     if (continuation.isBlank()) return ReadResult(error=RequestError(RequestFailure.INVALID,"missing_chat_key"))
     val response=requestObject(youtubeQuery(YOUTUBE_API+"live_chat/get_live_chat",payload("continuation" to continuation),context),http)
-    return if(response.ok) ReadResult(chatPage(response.value!!.encode())) else ReadResult(error=response.error)
+    return if(response.ok) readChatPage(response.value!!) else ReadResult(error=response.error)
+}
+
+/** An unknown response must not silently end a healthy chat connection. */
+internal fun readChatPage(root: Json.Obj): ReadResult<ChatPage> {
+    fun unknown() = ReadResult<ChatPage>(error = RequestError(RequestFailure.PARSE, "unknown_chat_page"))
+    val content = if ("continuationContents" in root.fields)
+        root.path("continuationContents", "liveChatContinuation") ?: return unknown() else root
+    for (name in listOf("actions", "continuations")) {
+        if (name in content.fields && content.fields[name] !is Json.Arr) return unknown()
+        if (content.arr(name).any { it !is Json.Obj }) return unknown()
+    }
+    val actions = content.arr("actions")
+    val continuations = listOf(content) + content.arr("continuations").filterIsInstance<Json.Obj>()
+    val kinds = listOf("liveChatReplayContinuationData", "timedContinuationData", "invalidationContinuationData", "reloadContinuationData")
+    for (entry in continuations) for (kind in kinds) {
+        if (kind in entry.fields && entry.obj(kind)?.text("continuation").isNullOrBlank()) return unknown()
+    }
+    val next = kinds.firstNotNullOfOrNull { kind -> continuations.firstNotNullOfOrNull { it.obj(kind) } }
+    val explicitEnd = listOf("actions", "continuations").any { it in content.fields } &&
+        actions.isEmpty() && content.arr("continuations").isEmpty()
+    val knownControl = content.path("actionPanel", "liveChatRestrictedParticipationRenderer")?.fields?.isNotEmpty() == true
+    if (next == null && !explicitEnd && !knownControl && actions.none { knownChatAction(it as Json.Obj) }) return unknown()
+    val page = chatPage(content.encode())
+    // Routing evidence is scoped to this continuation, never an unrelated nested diagnostic/control.
+    return ReadResult(page.copy(nextKey = next?.text("continuation"),
+        waitMs = (next?.long("timeoutMs") ?: 1000).coerceIn(100, 60000),
+        replay = continuations.any { it.obj("liveChatReplayContinuationData") != null } || page.events.any { it.offsetMs != null }))
+}
+
+private val chatItemKinds = setOf("liveChatTextMessageRenderer", "liveChatPaidMessageRenderer", "liveChatMembershipItemRenderer",
+    "liveChatPaidStickerRenderer", "liveChatViewerEngagementMessageRenderer", "liveChatAutoModMessageRenderer",
+    "liveChatModeChangeMessageRenderer", "liveChatPlaceholderItemRenderer", "liveChatDonationAnnouncementRenderer",
+    "liveChatSponsorshipsGiftPurchaseAnnouncementRenderer", "liveChatSponsorshipsGiftRedemptionAnnouncementRenderer",
+    "liveChatSponsorshipsHeaderRenderer")
+
+/** Known controls may carry no text message. Unknown actions remain compatible when the page has a real next key. */
+private fun knownChatAction(action: Json.Obj, depth: Int = 0): Boolean {
+    if (depth > 16) return false
+    fun item(node: Json.Obj?, kinds: Set<String> = chatItemKinds) =
+        node != null && kinds.any { node.obj(it)?.fields?.isNotEmpty() == true }
+    if (item(action)) return true
+    if (item(action.obj("addChatItemAction")?.obj("item")) || item(action.obj("replaceChatItemAction")?.obj("replacementItem"))) return true
+    if (action.obj("markChatItemAsDeletedAction")?.text("targetItemId")?.isNotBlank() == true ||
+        action.obj("markChatItemsByAuthorAsDeletedAction")?.text("externalChannelId")?.isNotBlank() == true ||
+        action.obj("removeChatItemAction")?.text("targetItemId")?.isNotBlank() == true) return true
+    action.obj("replayChatItemAction")?.let { replay ->
+        val replayActions = replay.fields["actions"] as? Json.Arr ?: return@let
+        if (replayActions.items.all { it is Json.Obj } && (replayActions.items.isEmpty() ||
+                replayActions.items.any { knownChatAction(it as Json.Obj, depth + 1) })) return true
+    }
+    // Protocol control families: https://github.com/LuanRT/YouTube.js/tree/main/src/parser/classes/livechat
+    return item(action.obj("addLiveChatTickerItemAction")?.obj("item"), setOf("liveChatTickerPaidMessageItemRenderer",
+        "liveChatTickerPaidStickerItemRenderer", "liveChatTickerSponsorItemRenderer")) ||
+        item(action.obj("addBannerToLiveChatCommand")?.obj("bannerRenderer"), setOf("liveChatBannerRenderer")) ||
+        action.obj("removeBannerForLiveChatCommand")?.text("targetActionId")?.isNotBlank() == true ||
+        item(action.obj("showLiveChatActionPanelAction")?.obj("panelToShow"), setOf("liveChatActionPanelRenderer")) ||
+        item(action.obj("showLiveChatTooltipCommand")?.obj("tooltip"), setOf("tooltipRenderer")) ||
+        item(action.obj("replaceLiveChatAction")?.obj("replacement"), setOf("liveChatRenderer"))
+}
+
+/** Retains identity while allowing the same account's credentials to rotate. */
+internal class ChatSessionBinding(private val session: AccountSession) {
+    private val generation = session.snapshot().generation
+    fun snapshot(): ReadResult<RequestContext> = session.snapshot(generation)
 }
 
 /** One live-chat page at a time; hosts can suspend between reads without retaining an HTTP worker. */
-class ChatPoller(key: String) : java.io.Closeable {
+class ChatPoller(key: String, session: AccountSession = AccountSession()) : java.io.Closeable {
     @Volatile private var closed = false
     private var next: String? = key
     private val seen = java.util.LinkedHashSet<String>()
+    private val binding = ChatSessionBinding(session)
+    @Volatile private var latestPage: ChatPage? = null
+
+    init { require(key.isNotBlank()) }
 
     override fun close() { closed = true }
 
-    @Synchronized fun read(context: RequestContext = RequestContext(), http: HttpClient = JvmHttpClient()): ReadResult<ChatPage> {
+    @Synchronized fun read(http: HttpClient = JvmHttpClient()): ReadResult<ChatPage> {
         if (closed) return ReadResult(error = RequestError(RequestFailure.CANCELLED, "closed"))
-        val continuation = next ?: return ReadResult(ChatPage(emptyList(), emptyList(), null, 0))
-        val result = loadChat(continuation, context, http)
+        val context = binding.snapshot()
+        if (!context.ok) return ReadResult(error = context.error)
+        val continuation = next ?: run {
+            latestPage = null
+            return ReadResult(ChatPage(emptyList(), emptyList(), null, 0))
+        }
+        latestPage = null
+        val result = loadChat(continuation, context.value!!, http)
         if (closed) return ReadResult(error = RequestError(RequestFailure.CANCELLED, "closed"))
+        val current = binding.snapshot()
+        if (!current.ok) return ReadResult(error = current.error)
         if (!result.ok) return result
         val page = uniqueChat(result.value!!, seen)
         next = page.nextKey
+        latestPage = page
         return ReadResult(page)
+    }
+
+    /** Call after a fresh read; fallback parameters address the broadcaster, never grant permission. */
+    @Synchronized fun sender(fallbackParams: String? = null): ReadResult<ChatSender> {
+        if (closed) return ReadResult(error = RequestError(RequestFailure.CANCELLED, "closed"))
+        val current = binding.snapshot()
+        if (!current.ok) return ReadResult(error = current.error)
+        postingError()?.let { return ReadResult(error = it) }
+        val page = latestPage!!
+        val params = page.sendParams?.takeIf(String::isNotBlank) ?: fallbackParams?.takeIf(String::isNotBlank)
+            ?: return ReadResult(error = RequestError(RequestFailure.UNSUPPORTED, "missing_chat_key"))
+        return ReadResult(ChatSender(params, binding, ::postingError))
+    }
+
+    private fun postingError(): RequestError? {
+        if (closed) return RequestError(RequestFailure.CANCELLED, "closed")
+        val page = latestPage ?: return RequestError(RequestFailure.INVALID, "chat_read_required")
+        return if (page.replay || !page.postingRestriction.isNullOrBlank())
+            RequestError(RequestFailure.HTTP, "chat_posting_restricted", detail = page.postingRestriction) else null
     }
 }
 
-class ChatConnection(private val context: RequestContext = RequestContext(), private val http: HttpClient = JvmHttpClient(),
+class ChatConnection(private val session: AccountSession = AccountSession(), private val http: HttpClient = JvmHttpClient(),
     wait: ((Long) -> Unit)? = null) : java.io.Closeable {
     @Volatile private var closed = false
     private val waiting = ConnectionWait(wait)
     private val running = java.util.concurrent.atomic.AtomicBoolean()
+    private val binding = ChatSessionBinding(session)
     override fun close() { closed = true; waiting.close() }
 
     fun listen(key: String, receive: (ChatPage) -> Unit): ReadResult<Boolean> {
         if (!running.compareAndSet(false, true)) return ReadResult(error = RequestError(RequestFailure.INVALID, "already_listening"))
         try {
-            ChatPoller(key).use { poller ->
+            val current = binding.snapshot()
+            if (!current.ok) return ReadResult(error = current.error)
+            ChatPoller(key, session).use { poller ->
                 while (!closed && !Thread.currentThread().isInterrupted) {
-                    val reply = poller.read(context, http)
+                    val identity = binding.snapshot()
+                    if (!identity.ok) return ReadResult(error = identity.error)
+                    val reply = poller.read(http)
                     if (closed) break
                     if (!reply.ok) return ReadResult(error = reply.error)
                     val page = reply.value!!

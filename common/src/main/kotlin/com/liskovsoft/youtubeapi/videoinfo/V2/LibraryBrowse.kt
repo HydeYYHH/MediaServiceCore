@@ -1,12 +1,20 @@
 package com.liskovsoft.youtubeapi.videoinfo.V2
 
 enum class LibrarySection(val browseId: String) {
-    SUBSCRIPTIONS("FEsubscriptions"), HISTORY("FEhistory"), LIBRARY("FEmy_youtube"), MY_VIDEOS("FEmy_videos"),
+    SUBSCRIPTIONS("FEsubscriptions"), HISTORY("FEhistory"), LIBRARY("FElibrary"), MY_VIDEOS("FEmy_videos"),
     PLAYLISTS("FEplaylist_aggregation"), WATCH_LATER("VLWL"), LIKED("VLLL")
 }
 fun loadLibrary(section: LibrarySection, context: RequestContext, continuation: String? = null,
     http: HttpClient = JvmHttpClient()): ReadResult<BrowsePage> {
     if (!context.signedIn) return ReadResult(error = RequestError(RequestFailure.AUTH, "sign_in_required"))
+    // The uploads feed rejects WEB but serves the TV request profile with the
+    // same web cookies. Keep its continuation on that profile as well.
+    if (section == LibrarySection.MY_VIDEOS) {
+        val fields = if (continuation == null) payload("browseId" to section.browseId) else payload("continuation" to continuation)
+        val query = contextualQuery(tvQuery(YOUTUBE_API + "browse", fields, context.visitor), context).withCompactResponse()
+        val reply = requestObject(query, http)
+        return if (reply.ok) readBrowsePage(reply.value!!, continuation != null) else ReadResult(error = reply.error)
+    }
     return loadBrowse(section.browseId, context, continuation = continuation, http = http)
 }
 /** One page of the subscribed-channel directory; [nextKey] is null when the source ended. */
@@ -35,15 +43,8 @@ private fun subscribedChannelsPage(context: RequestContext, continuation: String
     opened: SubscriptionsBrowse?): ReadResult<ChannelDirectoryPage> {
     if (!context.signedIn) return ReadResult(error = RequestError(RequestFailure.AUTH, "sign_in_required"))
     if (continuation == null) {
-        // OAuth uses TVHTML5: its guide has no subscriptions. The subscriptions
-        // browse carries the complete channel tabs and their NEW_CONTENT markers.
-        if (context.accessToken != null) {
-            val subscriptions = opened?.takeIf { it.scope == context.scope() }?.let { ReadResult(it) }
-                ?: loadSubscriptionsBrowse(context, http)
-            if (!subscriptions.ok) return ReadResult(error = subscriptions.error)
-            val tabs = subscriptions.value!!.channels
-            if (tabs.isNotEmpty()) return ReadResult(ChannelDirectoryPage(tabs, null))
-        }
+        val tabs = opened?.takeIf { it.scope == context.scope() }?.channels.orEmpty()
+        if (tabs.isNotEmpty()) return ReadResult(ChannelDirectoryPage(tabs, null))
         val result = requestObject(youtubeQuery(YOUTUBE_API + "guide", "", context), http)
         if (!result.ok) return ReadResult(error = result.error)
         val items = result.value!!.objects("guideEntryRenderer").mapNotNull { entry ->

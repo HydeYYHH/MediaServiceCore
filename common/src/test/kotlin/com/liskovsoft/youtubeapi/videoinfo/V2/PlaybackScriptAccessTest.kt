@@ -59,7 +59,7 @@ class PlaybackScriptAccessTest {
                 return direct()
             }
         }, scripts = scripts)
-        val context = RequestContext(accountId = "account", accessToken = "token")
+        val context = RequestContext(accountId = "account", webSession = WebSession("SAPISID=token"))
         assertEquals(PlayerClient.WEB_SAFARI, session.load("video", context).value?.client)
         assertTrue(session.load("video", context).ok)
         assertEquals(listOf(123), timestamps)
@@ -94,7 +94,7 @@ class PlaybackScriptAccessTest {
         val session = PlaybackSession(object : HttpClient {
             override fun execute(request: HttpRequest) = direct()
         }, scripts = scripts, onAttempt = attempts::add)
-        val result = session.load("video", RequestContext(accountId = "account", accessToken = "token"))
+        val result = session.load("video", RequestContext(accountId = "account", webSession = WebSession("SAPISID=token")))
         assertTrue(result.ok)
         assertEquals(PlayerClient.VISIONOS, result.value?.client)
         assertEquals(listOf(PlayerClient.WEB_SAFARI, PlayerClient.VISIONOS), attempts.map { it.client })
@@ -134,7 +134,7 @@ class PlaybackScriptAccessTest {
             }
         }, scripts = scripts)
         val pool = Executors.newFixedThreadPool(2)
-        val context = RequestContext(accountId = "account", accessToken = "token")
+        val context = RequestContext(accountId = "account", webSession = WebSession("SAPISID=token"))
         try {
             val first = pool.submit(Callable { session.load("video", context) })
             assertTrue(entered.await(2, TimeUnit.SECONDS))

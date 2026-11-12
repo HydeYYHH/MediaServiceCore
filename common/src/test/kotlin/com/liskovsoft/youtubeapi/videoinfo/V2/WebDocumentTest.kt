@@ -20,17 +20,70 @@ class WebDocumentTest {
                     """var ytInitialData = {"overlay":{"reelPlayerOverlayRenderer":{"doubleTapLikeButton":{"likeButtonRenderer":{"target":{"videoId":"current"}}}}},"replacementEndpoint":{"reelWatchEndpoint":{"videoId":"next"}},"title":{"videoTitleHeaderViewModel":{"videoTitle":{"content":"Current title"}}}};""")
             }
         }
-        val context = RequestContext("account", "token", "visitor", "zh-CN", "CN", 7, "brand",
-            visitorCookie = "VISITOR_INFO1_LIVE=private")
+        val context = RequestContext(accountId = "account", webSession = WebSession("SAPISID=token", 3), visitor = "visitor", language = "zh-CN", region = "CN", generation = 7, visitorCookie = "VISITOR_INFO1_LIVE=private")
         val page = loadHome(HomeSection.SHORTS, context, http = http).value!!
         assertEquals(listOf("current", "next"), page.items.map { it.id })
         assertEquals("Current title", page.items.first().title)
         assertNull(page.items.last().title)
         val request = calls.single()
-        assertEquals("https://m.youtube.com/shorts?hl=zh-CN", request.url)
+        assertEquals("https://m.youtube.com/shorts?hl=zh-CN&authuser=3", request.url)
         assertTrue(request.body.isEmpty())
-        assertTrue(request.headers.keys.none { it.equals("Authorization", true) || it.equals("Cookie", true) ||
-            it.equals("X-Goog-Visitor-Id", true) || it.equals("X-Goog-PageId", true) })
+        assertEquals("SAPISID=token", request.headers["Cookie"])
+        assertEquals(setOf("User-Agent", "Cookie"), request.headers.keys)
+        assertFalse(request.headers.containsKey("Authorization"))
+        assertFalse(request.headers.containsKey("Origin"))
+        assertFalse(request.headers.containsKey("X-Origin"))
+        assertFalse(request.headers.containsKey("X-Goog-PageId"))
+    }
+
+    @Test fun anonymousDocumentRetainsVisitorCookiesWithoutInventingAnAccountSelection() {
+        val calls = ArrayList<HttpRequest>()
+        val http = object : HttpClient {
+            override fun execute(request: HttpRequest): HttpReply {
+                calls += request
+                return HttpReply(200, """var ytInitialData = {"entries":[],"sequenceContinuation":"visitor-next"};""")
+            }
+        }
+        val context = RequestContext(visitor = "visitor", visitorCookie = "VISITOR_INFO1_LIVE=fixture")
+        assertEquals("visitor-next", loadHome(HomeSection.SHORTS, context, http = http).value!!.nextKey)
+        val request = calls.single()
+        assertEquals("https://m.youtube.com/shorts?hl=en", request.url)
+        assertEquals("VISITOR_INFO1_LIVE=fixture", request.headers["Cookie"])
+        assertEquals(setOf("User-Agent", "Cookie"), request.headers.keys)
+    }
+
+    @Test fun delegatedShortsEntryFailsBeforeTheDocumentAndNeverFallsBackToAPersonalAccount() {
+        var calls = 0
+        val http = object : HttpClient {
+            override fun execute(request: HttpRequest): HttpReply {
+                calls++
+                error("A brand cannot be represented by the unverified document account selector")
+            }
+        }
+        val context = RequestContext(accountId = "brand-account", webSession = WebSession("SAPISID=fixture", 2), onBehalfOfUser = "brand-page")
+        val result = loadHome(HomeSection.SHORTS, context, http = http)
+        assertNull(result.value)
+        assertEquals(RequestFailure.UNSUPPORTED, result.error!!.kind)
+        assertEquals("shorts_brand_document_identity_unsupported", result.error!!.code)
+        assertEquals(0, calls)
+    }
+
+    @Test fun signedInShortsContinuationKeepsApiAuthorizationAndItsSelectedChannel() {
+        val context = RequestContext(accountId = "brand-account", webSession = WebSession("SAPISID=fixture", 2), onBehalfOfUser = "brand-page")
+        val http = object : HttpClient {
+            override fun execute(request: HttpRequest): HttpReply {
+                assertEquals("POST", request.method)
+                assertTrue(request.url.endsWith("/reel/reel_watch_sequence"))
+                assertEquals("SAPISID=fixture", request.headers["Cookie"])
+                assertTrue(request.headers["Authorization"]!!.startsWith("SAPISIDHASH "))
+                assertEquals("2", request.headers["X-Goog-AuthUser"])
+                assertEquals("brand-page", request.headers["X-Goog-PageId"])
+                assertEquals("brand-page", jsonObject(request.body)!!.path("context", "user")!!.text("onBehalfOfUser"))
+                assertEquals("brand-next", jsonObject(request.body)!!.text("sequenceParams"))
+                return HttpReply(200, """{"entries":[]}""")
+            }
+        }
+        assertTrue(loadHome(HomeSection.SHORTS, context, "brand-next", http).ok)
     }
     @Test fun authenticationAndVerificationFailuresAreNotBypassed() {
         val challenge = "https://www.google.com/sorry/index?continue=https%3A%2F%2Fm.youtube.com%2Fshorts"

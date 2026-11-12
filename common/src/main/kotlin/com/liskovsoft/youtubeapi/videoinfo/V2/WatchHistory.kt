@@ -12,37 +12,65 @@ internal fun playerTracking(root: Json.Obj?): PlayerTracking {
 }
 
 /** Account history needs tracking issued to that account, even when media plays anonymously. */
-fun loadAccountWatchTracking(videoId: String, context: RequestContext, http: HttpClient = JvmHttpClient(),
-    scripts: PlayerScriptProvider = JvmPlayerScripts(http)): ReadResult<PlayerTracking> {
+fun loadAccountWatchTracking(videoId: String, context: RequestContext, http: HttpClient = JvmHttpClient()): ReadResult<PlayerTracking> {
     if (!videoIdAccepted(videoId)) return ReadResult(error = RequestError(RequestFailure.INVALID, "invalid_video_id"))
     if (!context.signedIn) return ReadResult(error = RequestError(RequestFailure.AUTH, "sign_in_required"))
-    val tracking = if (context.accessToken.isNullOrBlank()) {
-        val details = loadPlayerDetails(videoId, context, http)
-        if (!details.ok) return ReadResult(error = details.error)
-        details.value!!.tracking
-    } else {
-        // The metadata-only TV request can be UNPLAYABLE with no tracking. This TV
-        // compatibility profile requires the current player's signature timestamp.
-        val script = scripts.script(videoId, context, false)
-        if (!script.ok) return ReadResult(error = script.error)
-        val timestamp = signatureTimestamp(script.value!!.source)
-            ?: return ReadResult(error = RequestError(RequestFailure.PARSE, "missing_signature_timestamp"))
-        val response = requestObject(contextualQuery(playerQuery(PlayerClient.TV_TIZEN, videoId, context.visitor, timestamp), context), http)
-        if (!response.ok) return ReadResult(error = response.error)
-        playerTracking(response.value)
+    return loadNativeWatchTracking(videoId, context, http, "account")
+}
+
+/** Tracking issued by native WEB for this signed-in or anonymous visitor identity; not proof of personalization. */
+@JvmOverloads fun loadWatchTracking(videoId: String, context: RequestContext,
+    http: HttpClient = JvmHttpClient()): ReadResult<PlayerTracking> {
+    if (!videoIdAccepted(videoId)) return ReadResult(error = RequestError(RequestFailure.INVALID, "invalid_video_id"))
+    if (!context.signedIn) {
+        if (context.visitor.isNullOrBlank() || context.onBehalfOfUser != null || context.accountId != null)
+            return ReadResult(error = RequestError(RequestFailure.AUTH, "missing_watch_identity"))
+        try { VisitorSession(context.visitorCookie.orEmpty(), context.visitor!!) } catch (_: IllegalArgumentException) {
+            return ReadResult(error = RequestError(RequestFailure.INVALID, "invalid_visitor_session"))
+        }
     }
-    if (tracking?.playbackUrl.isNullOrBlank() || tracking?.watchTimeUrl.isNullOrBlank())
-        return ReadResult(error = RequestError(RequestFailure.PARSE, "missing_account_tracking"))
+    return loadNativeWatchTracking(videoId, context, http, "watch")
+}
+
+private fun loadNativeWatchTracking(videoId: String, context: RequestContext, http: HttpClient,
+    scope: String): ReadResult<PlayerTracking> {
+    val response = requestObject(contextualQuery(playerQuery(PlayerClient.WEB, videoId, context.visitor), context), http)
+    if (!response.ok) return ReadResult(error = response.error)
+    val root = response.value!!
+    val answer = playerAnswer(root)
+    if (isBotCheck(answer.reason))
+        return ReadResult(error = RequestError(RequestFailure.VERIFICATION, "playability_bot_check"))
+    val status = answer.status
+    if (status != "OK") {
+        val failure = if (status == "LOGIN_REQUIRED") RequestFailure.AUTH else RequestFailure.UNSUPPORTED
+        val code = status?.takeIf { it.matches(Regex("[A-Z_]{1,48}")) }?.let { "playability_${it.lowercase(java.util.Locale.ROOT)}" }
+            ?: return ReadResult(error = RequestError(RequestFailure.PARSE, "missing_playability_status"))
+        return ReadResult(error = RequestError(failure, code))
+    }
+    if (root.obj("videoDetails")?.text("videoId") != videoId)
+        return ReadResult(error = RequestError(RequestFailure.PARSE, "tracking_video_mismatch"))
+    val tracking = playerTracking(root)
+    if (tracking.playbackUrl.isNullOrBlank() || tracking.watchTimeUrl.isNullOrBlank())
+        return ReadResult(error = RequestError(RequestFailure.PARSE, "missing_${scope}_tracking"))
+    if (!validTrackingUrl(tracking.playbackUrl, true) || !validTrackingUrl(tracking.watchTimeUrl, false))
+        return ReadResult(error = RequestError(RequestFailure.PARSE, "invalid_${scope}_tracking_url"))
     return ReadResult(tracking)
 }
 
+private fun validTrackingUrl(url: String?, playback: Boolean): Boolean {
+    val uri = try { URI(url ?: "") } catch (_: Exception) { return false }
+    return uri.scheme == "https" && uri.host in setOf("www.youtube.com", "s.youtube.com") && uri.rawUserInfo == null &&
+        (uri.port == -1 || uri.port == 443) && uri.rawFragment == null &&
+        uri.path == if (playback) "/api/stats/playback" else "/api/stats/watchtime"
+}
+
 fun setWatchHistory(enabled: Boolean, context: RequestContext, http: HttpClient = JvmHttpClient()) =
-    signedAction("history/" + if (enabled) "resume_watch_history" else "pause_watch_history", "\"nop\":\"false\"", context, http)
+    performWatchHistoryManagement(if (enabled) WatchHistoryCommand.RESUME else WatchHistoryCommand.PAUSE, context, http)
 fun clearWatchHistory(context: RequestContext, http: HttpClient = JvmHttpClient()) =
-    signedAction("history/clear_watch_history", "\"nop\":\"false\"", context, http)
+    performWatchHistoryManagement(WatchHistoryCommand.CLEAR, context, http)
 fun removeWatchHistory(feedbackToken: String, context: RequestContext, http: HttpClient = JvmHttpClient()): ReadResult<ActionReply> {
     if (feedbackToken.isBlank()) return ReadResult(error = RequestError(RequestFailure.INVALID, "missing_feedback_token"))
-    return signedAction("feedback", "\"feedbackTokens\":[${jsonQuote(feedbackToken)}]", context, http)
+    return submitHistoryFeedback(Json.Obj(mapOf("feedbackToken" to Json.Str(feedbackToken))), context, http)
 }
 // TrackingApi.createWatchRecordShort/updateWatchTime; keep the answer's ei/vm/of parameters.
 class WatchHistory(private val http: HttpClient = JvmHttpClient()) {
@@ -58,7 +86,7 @@ class WatchHistory(private val http: HttpClient = JvmHttpClient()) {
             return ReadResult(error = RequestError(RequestFailure.AUTH, "missing_watch_identity"))
         if (!videoIdAccepted(videoId) || durationMs <= 0 || positionMs !in 0..durationMs)
             return ReadResult(error = RequestError(RequestFailure.INVALID, "invalid_watch_position"))
-        // The ledger key follows the stable identity: a token refresh mid-playback must
+        // The ledger key follows the stable identity: cookie renewal mid-playback must
         // not orphan the session, while a sign-in/out (a new generation) still resets it.
         val key = context.ledgerScope() + Char.MIN_VALUE + videoId
         var session = sessions[key]
@@ -95,18 +123,14 @@ class WatchHistory(private val http: HttpClient = JvmHttpClient()) {
 
     private fun send(base: String?, playback: Boolean, videoId: String, cpn: String, positionMs: Long,
         durationMs: Long, startMs: Long, endMs: Long, context: RequestContext, http: HttpClient): ReadResult<String> {
-        val uri = try { URI(base ?: "") } catch (_: Exception) { null }
-        if (uri?.scheme != "https" || uri.host !in setOf("www.youtube.com", "s.youtube.com") || uri.rawUserInfo != null || (uri.port != -1 && uri.port != 443) ||
-            uri.path != if (playback) "/api/stats/playback" else "/api/stats/watchtime")
+        if (!validTrackingUrl(base, playback))
             return ReadResult(error = RequestError(RequestFailure.INVALID, "invalid_tracking_url"))
         var url = base!!
         // Without ver=2, YouTube can return 204 without persisting account history.
         val fields = listOf("ver" to "2", "docid" to videoId, "cpn" to cpn, "cmt" to (positionMs / 1000.0).toString(), "len" to (durationMs / 1000.0).toString(),
             "st" to (startMs / 1000.0).toString(), "et" to (endMs / 1000.0).toString())
         for ((name, value) in fields) url = urlWithParameter(url, name, value)
-        val headers = (if (!context.accessToken.isNullOrBlank()) mapOf("Authorization" to "Bearer " + context.accessToken)
-            else context.webSession?.headers().orEmpty() + context.visitorCookie?.let { mapOf("Cookie" to it) }.orEmpty()
-            ) + (context.visitor?.let { mapOf("X-Goog-Visitor-Id" to it) } ?: emptyMap())
+        val headers = context.sessionHeaders()
         return requestBody(HttpRequest("GET", url, headers), http)
     }
 

@@ -48,7 +48,7 @@ fun channelQuery(channelId: String, context: RequestContext = RequestContext(), 
 fun loadChannel(channelId: String, context: RequestContext = RequestContext(), params: String? = null, continuation: String? = null,
     search: String? = null, http: HttpClient = JvmHttpClient()): ReadResult<ChannelPage> {
     val result = requestObject(channelQuery(channelId, context, params, continuation, search).withCompactResponse(), http)
-    return if (result.ok) ReadResult(channelPage(result.value!!, channelId)) else ReadResult(error = result.error)
+    return if (result.ok) readChannelPage(result.value!!, channelId, continuation != null) else ReadResult(error = result.error)
 }
 
 /** `@handle` names resolve through the navigation endpoint; a plain channel id passes through. */

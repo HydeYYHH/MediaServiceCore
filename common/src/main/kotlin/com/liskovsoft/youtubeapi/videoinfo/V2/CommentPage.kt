@@ -12,6 +12,17 @@ data class CommentRun @JvmOverloads constructor(
     val bold: Boolean = false, val italic: Boolean = false, val strikethrough: Boolean = false
 )
 
+/** A server-provided image attachment. Null artwork means the image is unavailable, not displayable. */
+data class CommentImageAttachment(val artwork: Artwork?, val width: Int?, val height: Int?, val aspectRatio: Double?,
+    val unavailableText: String?, val unsupportedText: String?) {
+    override fun toString() = "CommentImageAttachment(variantCount=${artwork?.variants?.size ?: 0})"
+}
+
+/** The known voice-reply presentation contains a transcript, not a playable audio resource. */
+data class CommentVoiceReply(val transcript: String?, val unavailableText: String?) {
+    override fun toString() = "CommentVoiceReply"
+}
+
 data class Comment @JvmOverloads constructor(
     val id: String?,
     val author: String?,
@@ -35,8 +46,14 @@ data class Comment @JvmOverloads constructor(
     /** TV lists expose rating controls only after opening this comment's detail continuation. */
     val detailKey: String? = null,
     /** Null when this response omitted the viewer's rating rather than reporting neutral. */
-    val viewerRating: String? = null
-)
+    val viewerRating: String? = null,
+    val imageAttachment: CommentImageAttachment? = null,
+    val voiceReply: CommentVoiceReply? = null
+) {
+    /** Presentation only; this getter never resolves attachments or performs I/O. */
+    val hasDisplayableContent: Boolean get() = !text.isNullOrBlank() || imageAttachment?.artwork?.variants?.isNotEmpty() == true ||
+        !voiceReply?.transcript.isNullOrBlank()
+}
 
 data class CommentPage(val comments: List<Comment>, val nextKey: String?, val createKey: String?, val sortOptions: List<CommentSort> = emptyList(),
     val total: String? = null, val turnedOff: Boolean = false)
@@ -103,7 +120,7 @@ internal fun commentPage(root: Json.Obj): CommentPage {
                 renderer.bool("isVerified") == true,
                 renderer.bool("isPinned") == true || renderer.obj("pinnedCommentBadge") != null,
                 renderer.bool("isHearted") ?: if (renderer.path("actionButtons", "commentActionButtonsRenderer")?.obj("creatorHeart") != null) true else null,
-                detailKey, viewerRating
+                detailKey, viewerRating, commentImageAttachment(renderer), commentVoiceReply(renderer)
             ))
         }
     }
@@ -120,11 +137,13 @@ fun loadComments(
     post: (PlayerQuery) -> Pair<Int, String>
 ): CommentPage {
     val opened = postPage(commentQuery(videoId, null, visitor), post) ?: return emptyPage
-    val key = commentKey(opened) ?: return emptyPage
+    val opening = jsonObject(opened)?.let { ownedCommentOpening(it, videoId) } ?: return emptyPage
+    val key = commentKey(opening) ?: return emptyPage
     val page = postPage(commentQuery(null, key, visitor), post) ?: return emptyPage
-    val parsed = commentPage(page)
+    val scoped = jsonObject(page)?.let(::ownedCommentResponse) ?: return emptyPage
+    val parsed = commentPage(scoped)
     if (parsed.createKey != null) return parsed
-    val fromWatch = jsonObject(opened)?.let { firstNamed(it, "createCommentParams") }
+    val fromWatch = commentCreateKey(opening)
     return if (fromWatch == null) parsed else parsed.copy(createKey = fromWatch)
 }
 

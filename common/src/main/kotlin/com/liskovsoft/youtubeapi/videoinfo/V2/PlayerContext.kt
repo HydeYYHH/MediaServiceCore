@@ -71,9 +71,8 @@ fun loadPlayer(videoId: String, context: RequestContext, http: HttpClient = JvmH
         }
         tokenDeadline = null
         val identity = when (client) {
-            PlayerClient.TV, PlayerClient.TV_TIZEN -> context
-            PlayerClient.WEB, PlayerClient.WEB_SAFARI, PlayerClient.WEB_EMBED ->
-                context.copy(accountId = null, accessToken = null, onBehalfOfUser = null)
+            PlayerClient.TV, PlayerClient.TV_TIZEN,
+            PlayerClient.WEB, PlayerClient.WEB_SAFARI, PlayerClient.WEB_EMBED -> context
             else -> context.anonymous()
         }
         try {

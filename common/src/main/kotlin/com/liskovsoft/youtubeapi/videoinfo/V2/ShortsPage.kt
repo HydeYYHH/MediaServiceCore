@@ -10,6 +10,8 @@ fun shortsPage(body: String): BrowsePage {
     val title = root.objects("videoTitleHeaderViewModel").firstOrNull()?.display("videoTitle") ?: header?.display("reelTitleText")
     val channel = root.objects("reelChannelBarViewModel").firstOrNull()
     val description = root.objects("videoDescriptionHeaderRenderer").firstOrNull()
+    // ReelPlayerHeader.channelThumbnail is a channel image, never the reel's video cover.
+    val authorArtwork = readArtwork(header?.obj("channelThumbnail"))
     val endpoints = listOfNotNull(current, first) + root.arr("entries").mapNotNull {
         (it as? Json.Obj)?.takeUnless { entry -> entry.isAdvertisement() }
             ?.path("command", "reelWatchEndpoint")?.takeUnless { endpoint -> endpoint.isAdvertisement() }
@@ -21,9 +23,12 @@ fun shortsPage(body: String): BrowsePage {
         MediaItem("short", id, if (primary) title else null,
             if (primary) channel?.display("channelName") ?: header?.display("channelTitleText") else null,
             endpoint.thumbnail("thumbnail") ?: "https://i.ytimg.com/vi/$id/hqdefault.jpg", null,
-            if (primary) (description ?: header)?.path("channelNavigationEndpoint", "browseEndpoint")?.text("browseId") else null,
+            if (primary) description?.path("channelNavigationEndpoint", "browseEndpoint")?.text("browseId")
+                ?: header?.path("channelNavigationEndpoint", "browseEndpoint")?.text("browseId") else null,
             params = endpoint.text("params"), endpoint = actionEndpoint(Json.Obj(mapOf("reelWatchEndpoint" to endpoint))),
-            playerParams = endpoint.text("playerParams"))
+            playerParams = endpoint.text("playerParams"),
+            authorThumbnail = if (primary) authorArtwork?.best?.url ?: header?.thumbnail("channelThumbnail") else null,
+            authorArtwork = if (primary) authorArtwork else null)
     }.distinctBy { it.id }
     val next = root.text("sequenceContinuation") ?: root.text("continuation")
         ?: root.path("continuationEndpoint", "continuationCommand")?.text("token")

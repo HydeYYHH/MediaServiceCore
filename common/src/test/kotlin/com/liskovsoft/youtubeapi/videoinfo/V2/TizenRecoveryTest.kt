@@ -30,7 +30,7 @@ class TizenRecoveryTest {
                 else """{"playabilityStatus":{"status":"LOGIN_REQUIRED","reason":"Sign in to confirm you're not a bot"}}""")
             }
         }
-        fun load(id: String) = loadPlayer(id, RequestContext(accessToken = "fixture-token"), http,
+        fun load(id: String) = loadPlayer(id, RequestContext(webSession = WebSession("SAPISID=fixture-token")), http,
             script = PlayerScript("https://www.youtube.com/s/player/test/base.js", "signatureTimestamp:20760"),
             queues = queues, onAttempt = attempts::add)
         assertTrue(load("abcdefghijk").ok)
@@ -38,14 +38,14 @@ class TizenRecoveryTest {
         assertEquals(PlayerClient.TV_TIZEN, attempts.last().client)
         assertTrue(attempts.last().authenticated)
         assertTrue(auth.dropLast(1).all { it.second == null })
-        assertEquals("Bearer fixture-token", auth.last().second)
+        assertTrue(auth.last().second!!.startsWith("SAPISIDHASH "))
         attempts.clear(); auth.clear()
         assertTrue(load("bcdefghijkl").ok)
         assertEquals(listOf(PlayerClient.TV_TIZEN), attempts.map { it.client })
     }
 
     @Test fun mediaRejectionDeferralAndExclusionStillControlTheAccountRoute() {
-        val context = RequestContext(accessToken = "fixture-token")
+        val context = RequestContext(webSession = WebSession("SAPISID=fixture-token"))
         val seen = mutableListOf<PlayerClient>()
         val http = object : HttpClient { override fun execute(request: HttpRequest) = HttpReply(200, "{}") }
         loadPlayer("abcdefghijk", context, http, deferred = setOf(PlayerClient.TV_TIZEN), onAttempt = { seen += it.client })
@@ -80,7 +80,7 @@ class TizenRecoveryTest {
 
     @Test fun brandAccountSelectionPreservesPlaybackSafetyFields() {
         val query = contextualQuery(playerQuery(PlayerClient.TV_TIZEN, "abcdefghijk", "visitor", 20760),
-            RequestContext(accessToken = "fixture-token", onBehalfOfUser = "channel"))
+            RequestContext(webSession = WebSession("SAPISID=fixture-token"), onBehalfOfUser = "channel"))
         val user = jsonObject(query.body)!!.path("context", "user")!!
         assertEquals("channel", user.text("onBehalfOfUser"))
         assertTrue(query.body.contains("\"enableSafetyMode\":false"))

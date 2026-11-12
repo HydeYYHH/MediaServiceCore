@@ -1,31 +1,47 @@
 package com.liskovsoft.youtubeapi.videoinfo.V2
 
-private val pageGroups = setOf("shelfRenderer", "richShelfRenderer", "itemSectionRenderer")
+private val pageGroups = setOf("shelfRenderer", "richShelfRenderer")
 private val pageExcluded = setOf("header", "menu", "sortFilterSubMenuRenderer", "subMenuItems", "chips",
     "secondaryContents", "engagementPanels", "replies", "commentRepliesRenderer", "liveChatRenderer",
     "serviceEndpoint", "navigationEndpoint", "onTap", "onSelectCommand")
 
-internal fun pageKey(root: Json, forwardOnly: Boolean = false): String? {
+internal fun pageKey(root: Json, forwardOnly: Boolean = false): String? = pageKeyResult(root, forwardOnly).key
+
+private data class PageKeyResult(val key: String?, val ambiguous: Boolean = false)
+
+private fun pageKeyResult(root: Json, forwardOnly: Boolean): PageKeyResult {
     val pending = java.util.ArrayDeque<Json>()
-    val groupKeys = ArrayList<String>()
+    val outerKeys = ArrayList<String>()
+    val sectionKeys = ArrayList<String>()
+    var sectionAmbiguous = false
     pending.add(root)
     while (pending.isNotEmpty()) {
         when (val node = pending.removeFirst()) {
             is Json.Obj -> {
-                continuationKey(node, forwardOnly)?.let { return it }
+                continuationKey(node, forwardOnly)?.let(outerKeys::add)
                 for ((name, value) in node.fields) {
                     if (name in pageExcluded) continue
                     // A card may embed a preview list; its cursor never appends to the feed.
                     if (forwardOnly && name in contentRenderers) continue
-                    if (name in pageGroups) pageKey(value, forwardOnly)?.let { groupKeys.add(it) }
-                    else pending.add(value)
+                    // A shelf owns its cursor even when it is the page's only shelf.
+                    if (name in pageGroups) continue
+                    // Primary result/comment item-sections remain list owners, not shelves.
+                    if (name == "itemSectionRenderer") {
+                        val section = pageKeyResult(value, forwardOnly)
+                        sectionAmbiguous = sectionAmbiguous || section.ambiguous
+                        section.key?.let(sectionKeys::add)
+                    } else pending.add(value)
                 }
             }
             is Json.Arr -> node.items.forEach { pending.add(it) }
             else -> Unit
         }
     }
-    return groupKeys.distinct().singleOrNull()
+    return when {
+        outerKeys.size == 1 -> PageKeyResult(outerKeys.single())
+        outerKeys.size > 1 || sectionAmbiguous || sectionKeys.size > 1 -> PageKeyResult(null, ambiguous = true)
+        else -> PageKeyResult(sectionKeys.singleOrNull())
+    }
 }
 
 private fun continuationKey(node: Json.Obj, forwardOnly: Boolean): String? {

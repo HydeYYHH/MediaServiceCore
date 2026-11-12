@@ -12,7 +12,7 @@ class CommentReadTest {
                 else """{"continuationContents":{"itemSectionContinuation":{"contents":[{"commentRenderer":{"commentId":"c","contentText":{"simpleText":"Hello"}}}]}}}""")
             }
         }
-        val page = loadComments("abcdefghijk", RequestContext(accessToken = "access"), http = http).value!!
+        val page = loadComments("abcdefghijk", RequestContext(webSession = WebSession("SAPISID=access")), http = http).value!!
         assertEquals(2, requests)
         assertEquals("create-key", page.createKey)
         assertEquals("c", page.comments.single().id)

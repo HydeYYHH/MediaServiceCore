@@ -6,7 +6,9 @@ private const val PAIR_URL = "https://www.youtube.com/api/lounge/pairing/get_pai
 private const val FORM = "application/x-www-form-urlencoded"
 private const val HEX = "0123456789ABCDEF"
 
-data class LoungeScreen(val screenId: String, val loungeToken: String)
+data class LoungeScreen(val screenId: String, val loungeToken: String) {
+    override fun toString() = "LoungeScreen"
+}
 
 fun screenIdUrl(): String = SCREEN_URL
 
@@ -50,6 +52,10 @@ fun pairingQuery(
 }
 
 fun pairingCode(body: String): String? {
+    // The live manual-link endpoint returns a bare decimal code. Keep it lexical
+    // so leading zeroes survive; never coerce arbitrary JSON numbers or HTML.
+    val raw = body.trim()
+    if (raw.length in 6..16 && raw.all { it in '0'..'9' }) return groupCode(raw)
     val code = jsonObject(body)?.text("code")?.takeIf { it.isNotEmpty() } ?: return null
     return groupCode(code)
 }
