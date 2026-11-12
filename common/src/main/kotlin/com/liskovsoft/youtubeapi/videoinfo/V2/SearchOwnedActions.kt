@@ -126,7 +126,7 @@ private class SearchActionReader {
             val kind = kinds.single()
             role(node, setOf(kind))
             val item = obj(node, kind)
-            if (node.isAdvertisement() || item.isAdvertisement() || kind in contentRenderers) return@forEach
+            if (kind in searchAuxiliarySlots || node.isAdvertisement() || item.isAdvertisement() || kind in contentRenderers) return@forEach
             val path = routes(item, routes(node, inherited))
             when {
                 kind in lists -> slots(item.fields.getValue(lists.getValue(kind)), path, depth + 1)

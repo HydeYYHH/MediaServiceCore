@@ -17,6 +17,9 @@ private val searchLists = mapOf("itemSectionRenderer" to "contents", "sectionLis
     "gridRenderer" to "items", "horizontalListRenderer" to "items", "verticalListRenderer" to "items", "reelShelfRenderer" to "items",
     "richShelfRenderer" to "contents", "gridShelfViewModel" to "contents")
 
+/** Supplemental search cards whose contents and commands are outside the native result collection. */
+internal val searchAuxiliarySlots = setOf("officialCardViewModel")
+
 /** Network callers supply the actual request lane. An explicit empty metadata end belongs only to continuation. */
 internal fun ownedSearchCollection(root: Json.Obj, continuation: Boolean, pureHeader: Boolean = false): SearchOwnedCollection? = runCatching {
     if (continuation && searchMetadataEnd(root)) return@runCatching SearchOwnedCollection(emptyList(), emptyList(), null, emptyList())
@@ -143,6 +146,7 @@ private class SearchCollectionReader(private val legacy: Boolean) {
     private var visited = 0
     private var organic = 0
     private var advertisements = 0
+    private var auxiliary = 0
     private var empty = 0
     private var displayedActions = 0
     private var cursorCount = 0
@@ -153,11 +157,12 @@ private class SearchCollectionReader(private val legacy: Boolean) {
         visit(slots, scope, 0)
         val pageCursor = scope.key()
         require(!pageCursor.second) // Ambiguity is a parse failure, never a fabricated terminal page.
-        val known = legacy || organic > 0 || messages.isNotEmpty() || displayedActions > 0 ||
+        val supported = organic > 0 || messages.isNotEmpty() || displayedActions > 0
+        val known = supported || auxiliary == 0 && (legacy ||
             cursorCount > 0 && advertisements == 0 || empty > 0 && advertisements == 0 ||
             advertisements > 0 && cursorCount == 0 && when (val estimate = root.fields["estimatedResults"]) {
                 is Json.Str -> estimate.value == "0"; is Json.Num -> estimate.text == "0"; else -> false
-            }
+            })
         require(known)
         // Only leaf wrappers that this walk accepted are handed to the shared card mapper.
         val items = contentItems(Json.Arr(cards))
@@ -196,6 +201,7 @@ private class SearchCollectionReader(private val legacy: Boolean) {
         val kind = (wrapper.fields.keys - searchTracking).singleOrNull() ?: error("search slot kind")
         val value = wrapper.obj(kind) ?: error("search slot type")
         when {
+            kind in searchAuxiliarySlots -> auxiliary++
             kind in searchAds || kind in contentRenderers && value.isAdvertisement() -> advertisements++
             kind in contentRenderers -> {
                 require(contentItems(wrapper).isNotEmpty())

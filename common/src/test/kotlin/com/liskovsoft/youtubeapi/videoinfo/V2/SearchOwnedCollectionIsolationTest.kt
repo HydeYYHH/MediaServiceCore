@@ -167,9 +167,11 @@ class SearchOwnedCollectionIsolationTest {
         }
     }
 
-    @Test fun officialCardRemainsUnknownUntilItsActualChildSchemaIsProven() {
+    @Test fun officialCardIsOpaqueBesideOrganicResultsAndCannotEstablishItsOwnPage() {
         val card = """{"officialCardViewModel":{"contents":[{"horizontalShelfViewModel":{"contents":[${video("unproven")}]}}]}}"""
-        assertEquals("unknown_search_page", read(page(video("own") + "," + card)).error?.code)
+        val loaded = read(page(video("own") + "," + card)).value!!
+        assertEquals(listOf("own"), loaded.items.map { it.id })
+        assertEquals("unknown_search_page", read(page(card)).error?.code)
         assertTrue(searchPage(page(card)).items.isEmpty())
     }
 
@@ -354,7 +356,7 @@ class SearchOwnedCollectionIsolationTest {
     }
 
     @Test fun observedAppendTargetDoesNotAuthorizeAnUnknownOwnedChild() {
-        val card = """{"officialCardViewModel":{"contents":[{"horizontalShelfViewModel":{"items":[${video("unproven")}]}}]}}"""
+        val card = """{"officialCardRenderer":{"contents":[{"horizontalShelfViewModel":{"items":[${video("unproven")}]}}]}}"""
         rejectedBody(body(video("own") + "," + card + "," + cursor("own")))
     }
 
