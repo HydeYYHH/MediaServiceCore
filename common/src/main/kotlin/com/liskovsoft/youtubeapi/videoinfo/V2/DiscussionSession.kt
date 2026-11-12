@@ -231,7 +231,7 @@ class CommentThread @JvmOverloads internal constructor(private val session: Acco
             identities.keys.retainAll(visible)
             revision++
             pageCursors.clear()
-            createKey = page.createKey?.takeIf(String::isNotBlank)
+            createKey = page.createKey?.takeIf { it.isNotBlank() && !page.turnedOff }
             total = page.total
             turnedOff = page.turnedOff
             val sourceOrders = if (page.sortOptions.isNotEmpty()) page.sortOptions else opening?.watch?.commentSortOptions.orEmpty()

@@ -4,6 +4,18 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class DiscussionSessionTest {
+    @Test fun anExplicitlyDisabledDiscussionCannotUseAnOtherwisePresentCreationCapability() {
+        val wire = Wire()
+        wire.opening = watch().dropLast(1) + """, "messageRenderer":{"text":{"simpleText":"Comments are turned off"}}}"""
+        val thread = wire.open()
+        val page = thread.load().value!!
+        assertTrue(page.turnedOff)
+        assertFalse(page.canCreate)
+        val count = wire.requests.size
+        assertEquals("missing_comment_creation_capability", thread.create("Message").error?.code)
+        assertEquals(count, wire.requests.size)
+    }
+
     @Test fun webThreadSiblingRepliesKeepTheirRouteAndStopSelfRepeatingContinuations() {
         val wire = Wire()
         wire.pages["root"] = page("""{"commentThreadRenderer":{"comment":{"commentRenderer":{"commentId":"parent",
