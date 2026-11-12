@@ -35,6 +35,7 @@ internal sealed class CatalogRoute {
     data class Topic(val section: HomeSection) : CatalogRoute()
     data class Search(val query: String, val params: String?) : CatalogRoute()
     data class Library(val section: LibrarySection) : CatalogRoute()
+    data class SubscriptionChannel(val channelId: String, val params: String) : CatalogRoute()
     data class Related(val videoId: String) : CatalogRoute()
     // Retain the actual low-level issuer and cursor; no channel continuation is reconstructed from text.
     data class ChannelTab(val cursor: ChannelTabCursor) : CatalogRoute()
@@ -53,23 +54,43 @@ class CatalogSession @JvmOverloads constructor(private val session: AccountSessi
     private val issuedCursors = java.util.WeakHashMap<CatalogCursor, Unit>()
     private val issuedFilters = java.util.WeakHashMap<CatalogFilter, Unit>()
 
-    @JvmOverloads fun home(section: HomeSection = HomeSection.HOME): ReadResult<CatalogPage> =
-        open(if (section == HomeSection.HOME) CatalogRoute.Home else CatalogRoute.Topic(section))
+    @JvmOverloads fun home(section: HomeSection = HomeSection.HOME, http: HttpClient = this.http): ReadResult<CatalogPage> =
+        open(if (section == HomeSection.HOME) CatalogRoute.Home else CatalogRoute.Topic(section), http)
 
-    fun search(query: String): ReadResult<CatalogPage> {
+    @JvmOverloads fun search(query: String, http: HttpClient = this.http): ReadResult<CatalogPage> {
         if (query.isBlank()) return catalogError(RequestFailure.INVALID, "missing_search_query")
-        return open(CatalogRoute.Search(query, null))
+        return open(CatalogRoute.Search(query, null), http)
     }
 
-    fun library(section: LibrarySection): ReadResult<CatalogPage> = open(CatalogRoute.Library(section))
+    @JvmOverloads fun library(section: LibrarySection, http: HttpClient = this.http): ReadResult<CatalogPage> = open(CatalogRoute.Library(section), http)
 
-    fun related(videoId: String): ReadResult<CatalogPage> {
+    /** Reuses the feed and channel artwork from the same initial subscriptions response. */
+    @JvmOverloads fun subscriptions(opened: SubscriptionsBrowse, http: HttpClient = this.http): ReadResult<CatalogPage> {
+        val generation = session.snapshot().generation
+        return session.runBound(generation) { context ->
+            if (!context.signedIn || opened.scope != context.scope())
+                return@runBound catalogError(RequestFailure.INVALID, "foreign_subscriptions_browse")
+            val bound = SessionBoundHttp(session, generation, http)
+            val seeded = preparation.prepareBound(opened.channels, context, 0, bound)
+            if (!seeded.ok) return@runBound ReadResult(error = seeded.error)
+            browse(opened.feed, CatalogRoute.Library(LibrarySection.SUBSCRIPTIONS), context, bound)
+        }
+    }
+
+    @JvmOverloads fun channelSubscriptions(channelId: String, params: String? = null,
+        http: HttpClient = this.http): ReadResult<CatalogPage> {
+        if (!channelId.matches(Regex("UC[A-Za-z0-9_-]{22}")))
+            return catalogError(RequestFailure.INVALID, "invalid_channel_identity")
+        return open(CatalogRoute.SubscriptionChannel(channelId, params ?: subscriptionChannelParams(channelId)), http)
+    }
+
+    @JvmOverloads fun related(videoId: String, http: HttpClient = this.http): ReadResult<CatalogPage> {
         if (!videoIdAccepted(videoId)) return catalogError(RequestFailure.INVALID, "invalid_video_id")
-        return open(CatalogRoute.Related(videoId))
+        return open(CatalogRoute.Related(videoId), http)
     }
 
     /** Prepared channel cards or typed posts, using the semantic routes discovered by ChannelSession. */
-    fun channel(channelIdOrHandle: String, kind: ChannelTabKind): ReadResult<CatalogPage> {
+    @JvmOverloads fun channel(channelIdOrHandle: String, kind: ChannelTabKind, http: HttpClient = this.http): ReadResult<CatalogPage> {
         if (kind == ChannelTabKind.UNKNOWN) return catalogError(RequestFailure.UNSUPPORTED, "unknown_channel_tab")
         val generation = session.snapshot().generation
         return session.runBound(generation) { context ->
@@ -82,8 +103,18 @@ class CatalogSession @JvmOverloads constructor(private val session: AccountSessi
         }
     }
 
+    @JvmOverloads fun channel(handle: ChannelHandle, kind: ChannelTabKind, http: HttpClient = this.http): ReadResult<CatalogPage> {
+        if (!handle.ownedBy(session)) return catalogError(RequestFailure.INVALID, "foreign_channel_handle")
+        val generation = session.snapshot().generation
+        return session.runBound(generation) { context ->
+            val bound = SessionBoundHttp(session, generation, http)
+            if (kind == ChannelTabKind.POSTS) channelPosts(handle.openPosts(bound), context, bound, handle.preparedAuthor())
+            else channelTab(handle.openTab(kind, bound), context, bound, handle.preparedAuthor())
+        }
+    }
+
     /** Loads one owned post document and prepares its author using this catalog's cache and budget. */
-    fun post(postId: String): ReadResult<PreparedPost> {
+    @JvmOverloads fun post(postId: String, http: HttpClient = this.http): ReadResult<PreparedPost> {
         val generation = session.snapshot().generation
         return session.runBound(generation) { context ->
             val bound = SessionBoundHttp(session, generation, http)
@@ -97,32 +128,36 @@ class CatalogSession @JvmOverloads constructor(private val session: AccountSessi
         }
     }
 
-    fun next(cursor: CatalogCursor): ReadResult<CatalogPage> {
+    @JvmOverloads fun next(cursor: CatalogCursor, http: HttpClient = this.http): ReadResult<CatalogPage> {
         if (cursor.owner !== this || synchronized(issuedCursors) { !issuedCursors.containsKey(cursor) })
             return catalogError(RequestFailure.INVALID, "foreign_catalog_cursor")
-        return load(cursor.route, cursor.key, cursor.generation)
+        return load(cursor.route, cursor.key, cursor.generation, http)
     }
 
-    fun filter(option: CatalogFilter): ReadResult<CatalogPage> {
+    @JvmOverloads fun filter(option: CatalogFilter, http: HttpClient = this.http): ReadResult<CatalogPage> {
         if (option.owner !== this || synchronized(issuedFilters) { !issuedFilters.containsKey(option) })
             return catalogError(RequestFailure.INVALID, "foreign_catalog_filter")
         if (!option.available || option.parameters.isNullOrBlank())
             return catalogError(RequestFailure.UNSUPPORTED, "filter_not_navigable")
-        return load(CatalogRoute.Search(option.query, option.parameters), null, option.generation)
+        return load(CatalogRoute.Search(option.query, option.parameters), null, option.generation, http)
     }
 
     /** Drops only this catalog's public author-artwork cache; never rotates identity or preferences. */
     fun clearPreparedData() = preparation.clear()
 
-    private fun open(route: CatalogRoute): ReadResult<CatalogPage> = load(route, null, session.snapshot().generation)
+    private fun open(route: CatalogRoute, http: HttpClient): ReadResult<CatalogPage> = load(route, null, session.snapshot().generation, http)
 
-    private fun load(route: CatalogRoute, key: String?, generation: Long): ReadResult<CatalogPage> =
+    private fun load(route: CatalogRoute, key: String?, generation: Long, http: HttpClient): ReadResult<CatalogPage> =
         session.runBound(generation) { context ->
             val bound = SessionBoundHttp(session, generation, http)
             when (route) {
                 CatalogRoute.Home -> browse(loadBrowse("FEwhat_to_watch", context, continuation = key, http = bound), route, context, bound)
                 is CatalogRoute.Topic -> browse(loadHome(route.section, context, key, bound), route, context, bound)
                 is CatalogRoute.Library -> browse(loadLibrary(route.section, context, key, bound), route, context, bound)
+                is CatalogRoute.SubscriptionChannel -> {
+                    if (!context.signedIn) catalogError(RequestFailure.AUTH, "sign_in_required")
+                    else browse(loadBrowse(LibrarySection.SUBSCRIPTIONS.browseId, context, route.params, key, bound), route, context, bound)
+                }
                 is CatalogRoute.Search -> {
                     val loaded = loadSearch(route.query, context, route.params, key, bound)
                     if (!loaded.ok) ReadResult(error = loaded.error) else {
@@ -141,8 +176,8 @@ class CatalogSession @JvmOverloads constructor(private val session: AccountSessi
                         prepare(page.related, emptyList(), page.nextKey, emptyList(), emptyList(), route, context, bound)
                     }
                 }
-                is CatalogRoute.ChannelTab -> channelTab(route.cursor.owner.next(route.cursor), context, bound, route.cursor.owner.preparedAuthor())
-                is CatalogRoute.ChannelPosts -> channelPosts(route.cursor.owner.nextPosts(route.cursor), context, bound, route.cursor.owner.preparedAuthor())
+                is CatalogRoute.ChannelTab -> channelTab(route.cursor.owner.next(route.cursor, bound), context, bound, route.cursor.owner.preparedAuthor())
+                is CatalogRoute.ChannelPosts -> channelPosts(route.cursor.owner.nextPosts(route.cursor, bound), context, bound, route.cursor.owner.preparedAuthor())
             }
         }
 

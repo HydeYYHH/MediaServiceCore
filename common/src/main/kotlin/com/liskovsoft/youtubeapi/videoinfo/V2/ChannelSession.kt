@@ -16,7 +16,7 @@ class ChannelSession @JvmOverloads constructor(private val session: AccountSessi
     internal fun issued(handle: ChannelHandle): Boolean = issuedHandles.containsKey(handle)
     internal fun author(handle: ChannelHandle): AuthorInfo? = if (issued(handle)) authors[handle] else null
 
-    fun open(channelIdOrHandle: String): ReadResult<ChannelHandle> {
+    @JvmOverloads fun open(channelIdOrHandle: String, http: HttpClient = this.http): ReadResult<ChannelHandle> {
         val generation = session.snapshot().generation
         return session.runBound(generation) { context ->
             if (!CHANNEL_ID.matches(channelIdOrHandle) && !CHANNEL_HANDLE.matches(channelIdOrHandle))
@@ -39,7 +39,7 @@ class ChannelSession @JvmOverloads constructor(private val session: AccountSessi
             val parsedChannel = parsed.value!!
             val channel = parsedChannel.copy(page = parsedChannel.page.copy(tabs = tabs))
             val videoItems = ownedChannelVideoItems(root, id, channel.page, ChannelVideoResponseRole.OPENING)
-            ReadResult(ChannelHandle(session, generation, boundHttp, channel, initialPosts, this, videoItems).also {
+            ReadResult(ChannelHandle(session, generation, this.http, channel, initialPosts, this, videoItems).also {
                 issuedHandles[it] = true
                 ownedChannelAuthor(root, id).takeIf { author -> author.channelId == id }?.let { author -> authors[it] = author }
             })
@@ -61,15 +61,17 @@ class ChannelHandle @JvmOverloads internal constructor(private val session: Acco
     private val openedTabs = ConcurrentHashMap<ChannelTabKind, OpenedTab>()
     private val tabCursors = Collections.synchronizedMap(WeakHashMap<ChannelTabCursor, Boolean>())
     private val postCursors = Collections.synchronizedMap(WeakHashMap<ChannelPostsCursor, Boolean>())
+    private val searchCursors = Collections.synchronizedMap(WeakHashMap<ChannelSearchCursor, Boolean>())
     @Volatile private var openedPosts: PostPage? = null
     val availableTabs: List<ChannelTabKind> = Collections.unmodifiableList(routes.map { it.kind }.distinct())
+    internal fun ownedBy(account: AccountSession): Boolean = session === account
     internal fun preparedAuthor(): AuthorInfo? = issuer?.author(this)
 
     private fun <T> bound(operation: (RequestContext) -> ReadResult<T>): ReadResult<T> =
         if (issuer?.issued(this) != true) channelFailure(RequestFailure.INVALID, "unissued_channel_handle")
         else session.runBound(generation, operation)
 
-    fun openTab(kind: ChannelTabKind): ReadResult<ChannelTabPage> = bound { context ->
+    @JvmOverloads fun openTab(kind: ChannelTabKind, http: HttpClient = this.http): ReadResult<ChannelTabPage> = bound { context ->
         if (kind == ChannelTabKind.UNKNOWN) return@bound channelFailure(RequestFailure.UNSUPPORTED, "unknown_channel_tab")
         if (kind == ChannelTabKind.POSTS) return@bound channelFailure(RequestFailure.UNSUPPORTED, "channel_posts_requires_typed_reader")
         val tab = route(kind) ?: return@bound channelFailure(RequestFailure.UNSUPPORTED, "channel_tab_unavailable_or_ambiguous")
@@ -77,7 +79,7 @@ class ChannelHandle @JvmOverloads internal constructor(private val session: Acco
         val page = openedTabs[kind] ?: if (tab.selected) OpenedTab(channel.page,
             if (scope) initialVideoItems else emptySet(), scope) else {
             if (!navigable(tab)) return@bound channelFailure(RequestFailure.UNSUPPORTED, "channel_tab_has_no_navigation_capability")
-            val loaded = readTab(kind, tab.browseId ?: channel.id, context, tab.params)
+            val loaded = readTab(kind, tab.browseId ?: channel.id, context, tab.params, http = http)
             if (!loaded.ok) return@bound ReadResult(error = loaded.error)
             loaded.value!!
         }
@@ -85,20 +87,20 @@ class ChannelHandle @JvmOverloads internal constructor(private val session: Acco
         ReadResult(tabPage(kind, page))
     }
 
-    fun next(cursor: ChannelTabCursor): ReadResult<ChannelTabPage> {
+    @JvmOverloads fun next(cursor: ChannelTabCursor, http: HttpClient = this.http): ReadResult<ChannelTabPage> {
         if (cursor.owner !== this || !tabCursors.containsKey(cursor)) return channelFailure(RequestFailure.INVALID, "foreign_channel_cursor")
         return bound { context ->
-            val loaded = readTab(cursor.kind, null, context, continuation = cursor.key, ownerDisplayScope = tabCursors[cursor] == true)
+            val loaded = readTab(cursor.kind, null, context, continuation = cursor.key, ownerDisplayScope = tabCursors[cursor] == true, http = http)
             if (!loaded.ok) ReadResult(error = loaded.error) else ReadResult(tabPage(cursor.kind, loaded.value!!))
         }
     }
 
-    fun openPosts(): ReadResult<ChannelPostsPage> = bound { context ->
+    @JvmOverloads fun openPosts(http: HttpClient = this.http): ReadResult<ChannelPostsPage> = bound { context ->
         val tab = route(ChannelTabKind.POSTS)
             ?: return@bound channelFailure(RequestFailure.UNSUPPORTED, "channel_posts_unavailable_or_ambiguous")
         val page = openedPosts ?: if (tab.selected) initialPosts else {
             if (!navigable(tab)) return@bound channelFailure(RequestFailure.UNSUPPORTED, "channel_tab_has_no_navigation_capability")
-            val loaded = loadChannelPostsDirect(tab.browseId ?: channel.id!!, context, tab.params, http = http)
+            val loaded = loadChannelPostsDirect(tab.browseId ?: channel.id!!, context, tab.params, http = SessionBoundHttp(session, generation, http))
             if (!loaded.ok) return@bound ReadResult(error = loaded.error)
             loaded.value!!
         }
@@ -106,21 +108,43 @@ class ChannelHandle @JvmOverloads internal constructor(private val session: Acco
         ReadResult(postsPage(page))
     }
 
-    fun nextPosts(cursor: ChannelPostsCursor): ReadResult<ChannelPostsPage> {
+    @JvmOverloads fun nextPosts(cursor: ChannelPostsCursor, http: HttpClient = this.http): ReadResult<ChannelPostsPage> {
         if (cursor.owner !== this || !postCursors.containsKey(cursor)) return channelFailure(RequestFailure.INVALID, "foreign_channel_posts_cursor")
         return bound { context ->
             val tab = route(ChannelTabKind.POSTS)
                 ?: return@bound channelFailure(RequestFailure.UNSUPPORTED, "channel_posts_unavailable_or_ambiguous")
-            val loaded = loadChannelPostsDirect(tab.browseId ?: channel.id!!, context, continuation = cursor.key, http = http)
+            val loaded = loadChannelPostsDirect(tab.browseId ?: channel.id!!, context, continuation = cursor.key, http = SessionBoundHttp(session, generation, http))
             if (!loaded.ok) ReadResult(error = loaded.error) else ReadResult(postsPage(loaded.value!!))
         }
     }
 
     private fun route(kind: ChannelTabKind): BrowseTab? = routes.filter { it.kind == kind }.singleOrNull()
+
+    @JvmOverloads fun search(query: String, http: HttpClient = this.http): ReadResult<ChannelSearchPage> = bound { context ->
+        if (query.isBlank()) return@bound channelFailure(RequestFailure.INVALID, "missing_search_query")
+        val loaded = loadChannel(channel.id!!, context, search = query,
+            http = SessionBoundHttp(session, generation, http))
+        if (!loaded.ok) ReadResult(error = loaded.error) else ReadResult(searchPage(loaded.value!!.page))
+    }
+
+    @JvmOverloads fun nextSearch(cursor: ChannelSearchCursor, http: HttpClient = this.http): ReadResult<ChannelSearchPage> {
+        if (cursor.owner !== this || !searchCursors.containsKey(cursor))
+            return channelFailure(RequestFailure.INVALID, "foreign_channel_search_cursor")
+        return bound { context ->
+            val loaded = loadChannel(channel.id!!, context, continuation = cursor.key,
+                http = SessionBoundHttp(session, generation, http))
+            if (!loaded.ok) ReadResult(error = loaded.error) else ReadResult(searchPage(loaded.value!!.page))
+        }
+    }
+
+    private fun searchPage(page: BrowsePage) = ChannelSearchPage(page,
+        page.nextKey?.takeIf(String::isNotBlank)?.let { key ->
+            ChannelSearchCursor(this, key).also { searchCursors[it] = true }
+        })
     private fun navigable(tab: BrowseTab) = channelTabHasNavigation(tab, channel.id)
     private fun readTab(kind: ChannelTabKind, id: String?, context: RequestContext, params: String? = null,
-        continuation: String? = null, ownerDisplayScope: Boolean = kind == ChannelTabKind.VIDEOS && id == channel.id): ReadResult<OpenedTab> {
-        val response = requestObject(browseQuery(id, context, params, continuation).withCompactResponse(), http)
+        continuation: String? = null, ownerDisplayScope: Boolean = kind == ChannelTabKind.VIDEOS && id == channel.id, http: HttpClient = this.http): ReadResult<OpenedTab> {
+        val response = requestObject(browseQuery(id, context, params, continuation).withCompactResponse(), SessionBoundHttp(session, generation, http))
         if (!response.ok) return ReadResult(error = response.error)
         val parsed = readBrowsePage(response.value!!, continuation != null)
         if (!parsed.ok) return ReadResult(error = parsed.error)
@@ -144,6 +168,10 @@ class ChannelTabPage internal constructor(val kind: ChannelTabKind, val page: Br
     internal constructor(kind: ChannelTabKind, page: BrowsePage, next: ChannelTabCursor?) : this(kind, page, next, emptySet())
 }
 class ChannelPostsPage internal constructor(val page: PostPage, val next: ChannelPostsCursor?)
+class ChannelSearchPage internal constructor(val page: BrowsePage, val next: ChannelSearchCursor?)
+class ChannelSearchCursor internal constructor(internal val owner: ChannelHandle, internal val key: String) {
+    override fun toString() = "ChannelSearchCursor"
+}
 class ChannelTabCursor internal constructor(internal val owner: ChannelHandle, val kind: ChannelTabKind, internal val key: String) {
     override fun toString() = "ChannelTabCursor(kind=$kind)"
 }

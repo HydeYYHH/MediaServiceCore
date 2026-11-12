@@ -9,8 +9,9 @@ class DiscussionSession @JvmOverloads constructor(private val session: AccountSe
     private val issuedThreads = Collections.synchronizedMap(WeakHashMap<CommentThread, Boolean>())
     internal fun issued(thread: CommentThread): Boolean = issuedThreads.containsKey(thread)
 
-    /** An optional opening proves provenance; routing is refreshed because WatchPage omits command metadata. */
-    @JvmOverloads fun openVideo(videoId: String, opened: AccountResult<WatchPage>? = null): ReadResult<CommentThread> {
+    /** Reuses routing attached by loadWatch; parser-only/copy openings obtain a fresh service opening. */
+    @JvmOverloads fun openVideo(videoId: String, opened: AccountResult<WatchPage>? = null,
+        http: HttpClient = this.http): ReadResult<CommentThread> {
         if (!videoIdAccepted(videoId)) return discussionError(RequestFailure.INVALID, "invalid_video_id")
         val generation = session.snapshot().generation
         if (opened != null) {
@@ -19,7 +20,10 @@ class DiscussionSession @JvmOverloads constructor(private val session: AccountSe
             if (opened.value.videoId != videoId) return discussionError(RequestFailure.INVALID, "comment_video_mismatch")
         }
         return session.runBound(generation) { context ->
-            val root = readDiscussionOpening(videoId, context, SessionBoundHttp(session, generation, http))
+            val attached = opened?.value?.discussionOpening
+            if (attached != null && !attached.matches(context))
+                return@runBound discussionError(RequestFailure.INVALID, "foreign_discussion_opening")
+            val root = attached?.result ?: readDiscussionOpening(videoId, context, SessionBoundHttp(session, generation, http))
             if (!root.ok) ReadResult(error = root.error)
             else ReadResult(CommentThread(session, http, generation, videoId, root.value!!, this).also {
                 issuedThreads[it] = true
@@ -32,7 +36,7 @@ class DiscussionSession @JvmOverloads constructor(private val session: AccountSe
 class CommentThread @JvmOverloads internal constructor(private val session: AccountSession, http: HttpClient,
     private val generation: Long, private val videoId: String, private var opening: DiscussionOpening?,
     private val issuer: DiscussionSession? = null) {
-    private val http: HttpClient = SessionBoundHttp(session, generation, http)
+    private val http: HttpClient = http
     private class Entry(var comment: Comment, var revision: Long, var reply: DiscussionRoute?, var detail: DiscussionRoute?)
     private val entries = LinkedHashMap<Long, Entry>()
     private val identities = HashMap<String, Long>()
@@ -40,6 +44,7 @@ class CommentThread @JvmOverloads internal constructor(private val session: Acco
     private val issuedHandles = Collections.newSetFromMap(WeakHashMap<CommentHandle, Boolean>())
     private val issuedCursors = Collections.newSetFromMap(WeakHashMap<CommentCursor, Boolean>())
     private val issuedOrders = Collections.newSetFromMap(WeakHashMap<CommentSortOrder, Boolean>())
+    private val pageCursors = LinkedHashMap<Pair<DiscussionRoute, Boolean>, CommentCursor>()
     private var serial = 0L
     private var revision = 0L
     private var createKey: String? = null
@@ -47,18 +52,37 @@ class CommentThread @JvmOverloads internal constructor(private val session: Acco
     private var turnedOff = false
     private var orders = emptyList<CommentSortOrder>()
 
-    private fun <T> bound(operation: (RequestContext) -> ReadResult<T>): ReadResult<T> =
+    private fun <T> bound(http: HttpClient, operation: (RequestContext, HttpClient) -> ReadResult<T>): ReadResult<T> =
         if (issuer?.issued(this) != true) discussionError(RequestFailure.INVALID, "unissued_comment_thread")
-        else session.runBound(generation, operation)
+        else session.runBound(generation) { context -> operation(context, SessionBoundHttp(session, generation, http)) }
 
     /** A second load refreshes the watch opening as well as the visible comments and their permissions. */
-    @Synchronized fun load(): ReadResult<CommentThreadPage> = bound { context ->
+    @JvmOverloads @Synchronized fun load(http: HttpClient = this.http): ReadResult<CommentThreadPage> = loadRoot(null, http)
+
+    /** Selects a position in the service's ordered sort menu, without matching translated labels. */
+    @JvmOverloads @Synchronized fun load(sortIndex: Int, http: HttpClient = this.http): ReadResult<CommentThreadPage> {
+        if (sortIndex < 0) return discussionError(RequestFailure.INVALID, "invalid_comment_sort_index")
+        val loaded = loadRoot(sortIndex, http)
+        if (!loaded.ok) return loaded
+        val order = loaded.value!!.sortOrders.getOrNull(sortIndex)
+        return if (order != null && !order.selected) sort(order, http) else loaded
+    }
+
+    private fun loadRoot(sortIndex: Int?, http: HttpClient): ReadResult<CommentThreadPage> = bound(http) { context, http ->
         val initial = opening
         opening = null
         val fresh = if (initial != null) ReadResult(initial) else readDiscussionOpening(videoId, context, http)
         if (!fresh.ok) return@bound ReadResult(error = fresh.error)
-        val root = fresh.value!!
-        val route = root.route
+        var root = fresh.value!!
+        val choice = sortIndex?.let { root.watch.commentSortOptions.getOrNull(it) }
+        val route = if (choice == null) root.route else {
+            val selected = discussionRoute(root.root, choice.key, YOUTUBE_API + "next")
+                ?: return@bound discussionError(RequestFailure.UNSUPPORTED, "unsupported_comment_sort_route")
+            root = root.copy(watch = root.watch.copy(commentSortOptions = root.watch.commentSortOptions.map {
+                it.copy(selected = it === choice)
+            }))
+            selected
+        }
         if (route == null) {
             publish(DiscussionDocument(root.root, CommentPage(emptyList(), null, root.watch.commentCreateKey,
                 root.watch.commentSortOptions, root.watch.commentCount, root.watch.commentsTurnedOff), YOUTUBE_API + "next"), context, true)
@@ -68,34 +92,40 @@ class CommentThread @JvmOverloads internal constructor(private val session: Acco
             val document = read.value!!
             val page = document.page.copy(createKey = document.page.createKey ?: root.watch.commentCreateKey,
                 total = root.watch.commentCount, turnedOff = root.watch.commentsTurnedOff)
-            publish(document.copy(page = page), context, true, root)
+            publish(document.copy(page = page), context, true, root, consumedRoute = route)
         }
     }
 
-    @Synchronized fun next(cursor: CommentCursor): ReadResult<CommentThreadPage> = bound { context ->
+    @JvmOverloads @Synchronized fun next(cursor: CommentCursor, http: HttpClient = this.http): ReadResult<CommentThreadPage> = bound(http) { context, http ->
         if (cursor.owner !== this) return@bound discussionError(RequestFailure.INVALID, "foreign_comment_cursor")
         if (cursor !in issuedCursors) return@bound discussionError(RequestFailure.INVALID, "unissued_comment_cursor")
         if (cursor.revision != revision) return@bound discussionError(RequestFailure.CANCELLED, "discussion_page_changed")
         val read = readDiscussion(cursor.route, context, http, replies = cursor.replies)
-        if (!read.ok) ReadResult(error = read.error) else publish(read.value!!, context, false, replies = cursor.replies)
+        if (!read.ok) ReadResult(error = read.error) else publish(read.value!!, context, false, replies = cursor.replies,
+            consumedRoute = cursor.route)
     }
 
-    @Synchronized fun sort(order: CommentSortOrder): ReadResult<CommentThreadPage> = bound { context ->
+    @JvmOverloads @Synchronized fun sort(order: CommentSortOrder, http: HttpClient = this.http): ReadResult<CommentThreadPage> = bound(http) { context, http ->
         if (order.owner !== this) return@bound discussionError(RequestFailure.INVALID, "foreign_comment_sort")
         if (order !in issuedOrders) return@bound discussionError(RequestFailure.INVALID, "unissued_comment_sort")
         if (order.revision != revision) return@bound discussionError(RequestFailure.CANCELLED, "discussion_page_changed")
         val read = readDiscussion(order.route, context, http)
-        if (!read.ok) ReadResult(error = read.error) else publish(read.value!!, context, true)
+        if (!read.ok) ReadResult(error = read.error) else {
+            val document = read.value!!
+            val page = document.page.copy(createKey = document.page.createKey ?: createKey, total = document.page.total ?: total)
+            publish(document.copy(page = page), context, true, inheritedOrders = orders, selectedOrder = order,
+                consumedRoute = order.route)
+        }
     }
 
-    @Synchronized fun replies(handle: CommentHandle): ReadResult<CommentThreadPage> = bound { context ->
+    @JvmOverloads @Synchronized fun replies(handle: CommentHandle, http: HttpClient = this.http): ReadResult<CommentThreadPage> = bound(http) { context, http ->
         val entry = entry(handle) ?: return@bound handleError(handle)
         val route = entry.reply ?: return@bound discussionError(RequestFailure.UNSUPPORTED, "missing_comment_reply_continuation")
         val read = readDiscussion(route, context, http, replies = true)
-        if (!read.ok) ReadResult(error = read.error) else publish(read.value!!, context, false, replies = true)
+        if (!read.ok) ReadResult(error = read.error) else publish(read.value!!, context, false, replies = true, consumedRoute = route)
     }
 
-    @Synchronized fun create(text: String): ReadResult<CommentMutation> = bound { context ->
+    @JvmOverloads @Synchronized fun create(text: String, http: HttpClient = this.http): ReadResult<CommentMutation> = bound(http) { context, http ->
         if (!context.signedIn) return@bound discussionError(RequestFailure.AUTH, "sign_in_required")
         if (text.isBlank()) return@bound discussionError(RequestFailure.INVALID, "invalid_comment_text")
         val key = createKey?.takeIf(String::isNotBlank)
@@ -103,10 +133,10 @@ class CommentThread @JvmOverloads internal constructor(private val session: Acco
         mutation(createComment(text, key, context, http), null)
     }
 
-    @Synchronized fun reply(handle: CommentHandle, text: String): ReadResult<CommentMutation> = bound { context ->
+    @JvmOverloads @Synchronized fun reply(handle: CommentHandle, text: String, http: HttpClient = this.http): ReadResult<CommentMutation> = bound(http) { context, http ->
         if (!context.signedIn) return@bound discussionError(RequestFailure.AUTH, "sign_in_required")
         if (text.isBlank()) return@bound discussionError(RequestFailure.INVALID, "invalid_comment_text")
-        val resolved = resolve(handle, context) { !it.replyCreateKey.isNullOrBlank() }
+        val resolved = resolve(handle, context, http) { !it.replyCreateKey.isNullOrBlank() }
         if (!resolved.ok) return@bound ReadResult(error = resolved.error)
         val key = resolved.value!!.comment.replyCreateKey?.takeIf(String::isNotBlank)
             ?: return@bound discussionError(RequestFailure.UNSUPPORTED, "missing_comment_reply_capability")
@@ -114,18 +144,18 @@ class CommentThread @JvmOverloads internal constructor(private val session: Acco
     }
 
     /** Fixed intent: a fresh detail read may supply tokens but cannot reinterpret LIKE as UNLIKE. */
-    @Synchronized fun rate(handle: CommentHandle, vote: CommentVote): ReadResult<CommentMutation> = bound { context ->
+    @JvmOverloads @Synchronized fun rate(handle: CommentHandle, vote: CommentVote, http: HttpClient = this.http): ReadResult<CommentMutation> = bound(http) { context, http ->
         if (!context.signedIn) return@bound discussionError(RequestFailure.AUTH, "sign_in_required")
-        val resolved = resolve(handle, context) { !voteKey(it, vote).isNullOrBlank() }
+        val resolved = resolve(handle, context, http) { !voteKey(it, vote).isNullOrBlank() }
         if (!resolved.ok) return@bound ReadResult(error = resolved.error)
         val comment = resolved.value!!.comment
         if (voteKey(comment, vote).isNullOrBlank()) return@bound discussionError(RequestFailure.UNSUPPORTED, "missing_comment_rating_capability")
         mutation(rateComment(comment.copy(detailKey = null), vote, context, http), handle)
     }
 
-    @Synchronized fun delete(handle: CommentHandle): ReadResult<CommentMutation> = bound { context ->
+    @JvmOverloads @Synchronized fun delete(handle: CommentHandle, http: HttpClient = this.http): ReadResult<CommentMutation> = bound(http) { context, http ->
         if (!context.signedIn) return@bound discussionError(RequestFailure.AUTH, "sign_in_required")
-        val resolved = resolve(handle, context) { !it.deleteKey.isNullOrBlank() }
+        val resolved = resolve(handle, context, http) { !it.deleteKey.isNullOrBlank() }
         if (!resolved.ok) return@bound ReadResult(error = resolved.error)
         val key = resolved.value!!.comment.deleteKey?.takeIf(String::isNotBlank)
             ?: return@bound discussionError(RequestFailure.UNSUPPORTED, "missing_comment_delete_capability")
@@ -151,7 +181,7 @@ class CommentThread @JvmOverloads internal constructor(private val session: Acco
             entry.reply != null, entry.detail != null, if (signed) CommentVote.values().filter { !voteKey(entry.comment, it).isNullOrBlank() }.toSet() else emptySet())
     }
 
-    private fun resolve(handle: CommentHandle, context: RequestContext, capable: (Comment) -> Boolean): ReadResult<Entry> {
+    private fun resolve(handle: CommentHandle, context: RequestContext, http: HttpClient, capable: (Comment) -> Boolean): ReadResult<Entry> {
         val found = entry(handle) ?: return handleError(handle)
         if (capable(found.comment)) return ReadResult(found)
         val route = found.detail ?: return ReadResult(found)
@@ -186,7 +216,9 @@ class CommentThread @JvmOverloads internal constructor(private val session: Acco
     }
 
     private fun publish(document: DiscussionDocument, context: RequestContext, reset: Boolean,
-        opening: DiscussionOpening? = null, replies: Boolean = false): ReadResult<CommentThreadPage> {
+        opening: DiscussionOpening? = null, replies: Boolean = false,
+        inheritedOrders: List<CommentSortOrder>? = null, selectedOrder: CommentSortOrder? = null,
+        consumedRoute: DiscussionRoute? = null): ReadResult<CommentThreadPage> {
         val page = document.page
         val next = page.nextKey?.let { discussionRoute(commentSection(document.root), it, document.endpoint) }
         if (page.nextKey != null && next == null) return discussionError(RequestFailure.UNSUPPORTED, "unsupported_comment_continuation_route")
@@ -198,18 +230,26 @@ class CommentThread @JvmOverloads internal constructor(private val session: Acco
             entries.keys.retainAll(retained)
             identities.keys.retainAll(visible)
             revision++
+            pageCursors.clear()
             createKey = page.createKey?.takeIf(String::isNotBlank)
             total = page.total
             turnedOff = page.turnedOff
             val sourceOrders = if (page.sortOptions.isNotEmpty()) page.sortOptions else opening?.watch?.commentSortOptions.orEmpty()
             val source = if (page.sortOptions.isNotEmpty() || opening == null) document.root else opening.root
             val endpoint = if (page.sortOptions.isNotEmpty() || opening == null) document.endpoint else YOUTUBE_API + "next"
-            orders = sourceOrders.mapNotNull { sort -> discussionRoute(source, sort.key, endpoint)?.let {
+            orders = if (sourceOrders.isEmpty() && inheritedOrders != null) inheritedOrders.map {
+                CommentSortOrder(this, revision, it.route, it.title, it === selectedOrder).also(issuedOrders::add)
+            } else sourceOrders.mapNotNull { sort -> discussionRoute(source, sort.key, endpoint)?.let {
                 CommentSortOrder(this, revision, it, sort.title, sort.selected).also(issuedOrders::add)
             } }
         }
         val comments = page.comments.map { handle(store(it, document)) }
-        return ReadResult(CommentThreadPage(comments, next?.let { CommentCursor(this, revision, it, replies).also(issuedCursors::add) },
+        val cursor = next?.takeUnless { it == consumedRoute }?.let { route ->
+            pageCursors.getOrPut(route to replies) {
+                CommentCursor(this, revision, route, replies).also(issuedCursors::add)
+            }.also { while (pageCursors.size > 128) pageCursors.remove(pageCursors.keys.first()) }
+        }
+        return ReadResult(CommentThreadPage(comments, cursor,
             if (replies) emptyList() else orders.toList(), if (replies) page.total else total,
             if (replies) page.turnedOff else turnedOff, context.signedIn && !createKey.isNullOrBlank() && !turnedOff))
     }
@@ -218,7 +258,10 @@ class CommentThread @JvmOverloads internal constructor(private val session: Acco
         val id = comment.id?.let { identities[it] } ?: ++serial
         comment.id?.let { identities[it] = id }
         val renderer = commentRenderers(document.root, commentSection(document.root)).firstOrNull { it.text("commentId") == comment.id }
-        val source = renderer ?: document.root
+        val thread = commentSection(document.root).objects("commentThreadRenderer").firstOrNull {
+            it.path("comment", "commentRenderer")?.text("commentId") == comment.id
+        }
+        val source = thread ?: renderer ?: document.root
         entries[id] = Entry(comment, revision, discussionRoute(source, comment.replyKey, document.endpoint),
             discussionRoute(source, comment.detailKey, document.endpoint))
         return id

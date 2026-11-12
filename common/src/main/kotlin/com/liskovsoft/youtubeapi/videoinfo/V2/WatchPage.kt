@@ -33,7 +33,10 @@ data class WatchPage @JvmOverloads constructor(val videoId: String?, val title: 
     val likeCount: String? = null,
     /** Comment-opening capabilities from this same /next response. */
     val commentCreateKey: String? = null, val commentSortOptions: List<CommentSort> = emptyList(),
-    val commentsTurnedOff: Boolean = false)
+    val commentsTurnedOff: Boolean = false) {
+    // A parser/copy cannot grant discussion routes; only a successful network opening attaches them.
+    internal var discussionOpening: WatchDiscussionOpening? = null
+}
 fun watchPage(body: String, videoId: String? = null): WatchPage {
     return watchPage(jsonObject(body), videoId)
 }
@@ -124,5 +127,13 @@ fun loadWatch(videoId: String?, context: RequestContext = RequestContext(), cont
     val fields = if (continuation != null) payload("continuation" to continuation) else
         payload("videoId" to videoId, "playlistId" to playlistId, "params" to params) + if (index == null) "" else ",\"index\":$index"
     val reply = requestObject(youtubeQuery(YOUTUBE_API + "next", fields, context).withCompactResponse(), http)
-    return if (reply.ok) readWatchPage(reply.value!!, videoId, continuation != null) else ReadResult(error = reply.error)
+    if (!reply.ok) return ReadResult(error = reply.error)
+    val root = reply.value!!
+    val parsed = readWatchPage(root, videoId, continuation != null)
+    if (parsed.ok && continuation == null && videoId != null) {
+        val page = parsed.value!!
+        page.discussionOpening = WatchDiscussionOpening(context.ledgerScope(), context.language, context.region,
+            parseDiscussionOpening(root, videoId, page))
+    }
+    return parsed
 }

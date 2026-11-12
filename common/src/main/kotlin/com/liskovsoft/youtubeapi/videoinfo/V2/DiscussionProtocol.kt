@@ -7,6 +7,10 @@ internal data class DiscussionRoute(val endpoint: String, val key: String) {
 }
 internal data class DiscussionDocument(val root: Json.Obj, val page: CommentPage, val endpoint: String)
 internal data class DiscussionOpening(val root: Json.Obj, val watch: WatchPage, val route: DiscussionRoute?)
+internal class WatchDiscussionOpening(val identity: String, val language: String, val region: String,
+    val result: ReadResult<DiscussionOpening>) {
+    fun matches(context: RequestContext) = identity == context.ledgerScope() && language == context.language && region == context.region
+}
 private const val DISCUSSION_NEXT = YOUTUBE_API + "next"
 
 /** Commands may switch between /next and /browse; no other destination can receive discussion credentials. */
@@ -44,11 +48,14 @@ internal fun readDiscussionOpening(videoId: String, context: RequestContext, htt
     val reply = requestObject(youtubeQuery(DISCUSSION_NEXT, payload("videoId" to videoId), context).withCompactResponse(), http)
     if (!reply.ok) return ReadResult(error = reply.error)
     val root = reply.value!!
-    val scoped = ownedCommentOpening(root, videoId)
-        ?: return ReadResult(error = RequestError(RequestFailure.PARSE, "unknown_comment_opening"))
     val parsed = readWatchPage(root, videoId, false)
     if (!parsed.ok) return ReadResult(error = parsed.error)
-    val watch = parsed.value!!
+    return parseDiscussionOpening(root, videoId, parsed.value!!)
+}
+
+internal fun parseDiscussionOpening(root: Json.Obj, videoId: String, watch: WatchPage): ReadResult<DiscussionOpening> {
+    val scoped = ownedCommentOpening(root, videoId)
+        ?: return ReadResult(error = RequestError(RequestFailure.PARSE, "unknown_comment_opening"))
     val key = watch.commentsKey
     val panel = scoped.objects("engagementPanelSectionListRenderer").firstOrNull {
         it.text("panelIdentifier") in setOf("engagement-panel-comments-section", "comment-item-section")

@@ -46,6 +46,15 @@ class AccountSession(private var context: RequestContext = RequestContext()) {
         if (context.generation == expectedGeneration) ReadResult(context) else sessionChanged()
     @Synchronized fun accounts(): List<Account> = accounts.toList()
 
+    /** Retire issued operations while retaining this host-owned account or visitor profile. */
+    @JvmOverloads @Synchronized fun invalidate(minimumGeneration: Long = 0): RequestContext {
+        require(minimumGeneration >= 0) { "Invalid minimum generation" }
+        check(context.generation < Long.MAX_VALUE) { "Session generation exhausted" }
+        revision++
+        context = context.copy(generation = maxOf(context.generation + 1, minimumGeneration))
+        return context
+    }
+
     /** Install/restore a host-owned anonymous profile through the same generation fence as login. */
     @Synchronized fun installVisitor(visitor: VisitorSession): RequestContext {
         revision++

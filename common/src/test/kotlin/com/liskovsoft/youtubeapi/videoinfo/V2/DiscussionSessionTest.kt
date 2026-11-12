@@ -4,6 +4,94 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class DiscussionSessionTest {
+    @Test fun webThreadSiblingRepliesKeepTheirRouteAndStopSelfRepeatingContinuations() {
+        val wire = Wire()
+        wire.pages["root"] = page("""{"commentThreadRenderer":{"comment":{"commentRenderer":{"commentId":"parent",
+            "contentText":{"simpleText":"Parent"}}},"replies":{"commentRepliesRenderer":{
+            "continuationEndpoint":${command("replies", "/youtubei/v1/browse")}}}}}""")
+        wire.pages["replies"] = page(comment("child"), "replies").replace("/youtubei/v1/next", "/youtubei/v1/browse")
+        val thread = wire.open()
+        val parent = thread.load().value!!.comments.single()
+        assertTrue(parent.permissions.canLoadReplies)
+        val replies = thread.replies(parent).value!!
+        assertEquals("child", replies.comments.single().content.id)
+        assertNull(replies.next)
+        assertEquals(3, wire.requests.size)
+    }
+
+    @Test fun aRepeatedRouteReusesItsIssuedCursorSoHostsCanStopLongerCycles() {
+        val wire = Wire()
+        wire.pages["root"] = page(comment(), "a")
+        wire.pages["a"] = page(comment("second"), "b")
+        wire.pages["b"] = page(comment("third"), "a")
+        val thread = wire.open()
+        val first = thread.load().value!!
+        val second = thread.next(first.next!!).value!!
+        val third = thread.next(second.next!!).value!!
+        assertSame(first.next, third.next)
+    }
+
+    @Test fun aSortDeclaredByTheWatchOpeningSkipsTheDefaultCommentsPage() {
+        val wire = Wire()
+        wire.opening = watch().dropLast(1) + """, "sortFilterSubMenuRenderer":{"subMenuItems":[
+            {"title":"Principal","selected":true,"serviceEndpoint":${command("root", "/youtubei/v1/browse")}},
+            {"title":"Recent","selected":false,"serviceEndpoint":${command("sorted")}}]}}"""
+        wire.pages["sorted"] = page(comment("recent"))
+        val page = wire.open().load(1).value!!
+        assertEquals("recent", page.comments.single().content.id)
+        assertTrue(page.sortOrders[1].selected)
+        assertEquals("45", page.total)
+        assertEquals(2, wire.requests.size)
+        assertEquals("sorted", jsonObject(wire.requests.last().body)!!.text("continuation"))
+    }
+
+    @Test fun aSortDiscoveredOnTheFirstPageLoadsOnceThenKeepsItsSelectedMenu() {
+        val wire = Wire()
+        wire.pages["sorted"] = page(comment("recent"))
+        val page = wire.open().load(1).value!!
+        assertEquals("recent", page.comments.single().content.id)
+        assertTrue(page.sortOrders[1].selected)
+        assertEquals("45", page.total)
+        assertTrue(page.canCreate)
+        assertEquals(3, wire.requests.size)
+        val absent = Wire()
+        absent.pages["root"] = page(comment(), sorts = false)
+        assertTrue(absent.open().load(1).value!!.sortOrders.isEmpty())
+        assertEquals(2, absent.requests.size)
+    }
+
+    @Test fun everyOperationUsesItsCurrentTransportRatherThanTheOpeningTransport() {
+        val opening = Wire()
+        val current = Wire(opening.session)
+        val unavailable = object : HttpClient {
+            override fun execute(request: HttpRequest): HttpReply = error("Default transport must not be retained by an operation")
+        }
+        val thread = DiscussionSession(opening.session, unavailable).openVideo("video", http = opening).value!!
+        val page = thread.load(current).value!!
+        val parent = page.comments.single()
+        assertTrue(thread.next(page.next!!, current).ok)
+        assertTrue(thread.replies(parent, current).ok)
+        assertTrue(thread.create("New comment", current).value!!.confirmed)
+        assertTrue(thread.reply(parent, "Reply", current).value!!.confirmed)
+        assertTrue(thread.rate(parent, CommentVote.LIKE, current).value!!.confirmed)
+        assertTrue(thread.delete(parent, current).value!!.confirmed)
+        assertTrue(thread.sort(page.sortOrders.last(), current).ok)
+        assertTrue(thread.load(current).ok)
+        assertEquals(1, opening.requests.size)
+        assertTrue(current.requests.size >= 10)
+    }
+
+    @Test fun actionResolutionAlsoUsesTheCurrentTransport() {
+        val opening = Wire()
+        val current = Wire(opening.session)
+        current.pages["root"] = page(comment(detailOnly = true))
+        val thread = opening.open()
+        val parent = thread.load(current).value!!.comments.single()
+        assertTrue(thread.rate(parent, CommentVote.LIKE, current).value!!.confirmed)
+        assertEquals(1, opening.requests.size)
+        assertEquals(3, current.requests.size)
+    }
+
     private class Wire(val session: AccountSession = AccountSession(RequestContext(accountId = "owner",
         webSession = WebSession("SAPISID=fixture", 2), generation = 7))) : HttpClient {
         val requests = ArrayList<HttpRequest>()
@@ -286,17 +374,41 @@ class DiscussionSessionTest {
         assertEquals(7L, wire.session.snapshot().generation)
     }
 
-    @Test fun optionalWatchOpeningsRequireOwnerGenerationAndMatchingVideoAndRefreshMissingRoutingMetadata() {
+    @Test fun networkWatchOpeningsReuseRoutingAndRequireOwnerGenerationAndMatchingVideo() {
         val wire = Wire()
         val opening = wire.session.execute { loadWatch("video", it, http = wire) }.value!!
         val factory = DiscussionSession(wire.session, wire)
         assertTrue(factory.openVideo("video", opening).ok)
-        assertEquals(2, wire.requests.size)
+        assertEquals(1, wire.requests.size)
         assertEquals("comment_video_mismatch", factory.openVideo("other", opening).error?.code)
         assertEquals("foreign_discussion_opening", DiscussionSession(AccountSession(wire.session.snapshot()), wire).openVideo("video", opening).error?.code)
         wire.session.clear()
         assertEquals("session_changed", factory.openVideo("video", opening).error?.code)
-        assertEquals(2, wire.requests.size)
+        assertEquals(1, wire.requests.size)
+    }
+
+    @Test fun copiedOrParserOnlyWatchOpeningsDoNotGrantNetworkRouting() {
+        val wire = Wire()
+        val loaded = wire.session.execute { loadWatch("video", it, http = wire) }.value!!
+        val factory = DiscussionSession(wire.session, wire)
+        val thread = factory.openVideo("video", loaded).value!!
+        assertTrue(thread.load().ok)
+        assertEquals(listOf("next", "browse"), wire.requests.map { it.url.substringBefore('?').substringAfterLast('/') })
+        val copied = wire.session.execute { ReadResult(loaded.value.copy()) }.value!!
+        assertTrue(factory.openVideo("video", copied).ok)
+        assertEquals(3, wire.requests.size)
+        val parsed = wire.session.execute { ReadResult(watchPage(watch(), "video")) }.value!!
+        assertTrue(factory.openVideo("video", parsed).ok)
+        assertEquals(4, wire.requests.size)
+    }
+
+    @Test fun rewrappingAnotherIdentitysNetworkOpeningCannotTransferItsRoutes() {
+        val wire = Wire()
+        val loaded = wire.session.execute { loadWatch("video", it, http = wire) }.value!!
+        val other = AccountSession(wire.session.snapshot().copy(accountId = "other"))
+        val rewrapped = other.execute { ReadResult(loaded.value) }.value!!
+        assertEquals("foreign_discussion_opening", DiscussionSession(other, wire).openVideo("video", rewrapped).error?.code)
+        assertEquals(1, wire.requests.size)
     }
 
     @Test fun unsupportedDestinationsAreNeverGuessedAndNoMissingCreationTokenIsFabricated() {
