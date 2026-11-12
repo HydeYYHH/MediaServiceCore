@@ -125,7 +125,13 @@ internal fun commentPage(root: Json.Obj): CommentPage {
         }
     }
     val createKey = commentCreateKey(root, section)
-    return CommentPage(comments, sectionContinuation(section) ?: commentNextKey(section), createKey, commentSortOptions(root))
+    val slots = section.arr("contents").mapNotNull { it as? Json.Obj }
+    val total = slots.firstNotNullOfOrNull { it.obj("commentsHeaderRenderer")?.display("countText") }
+    val turnedOff = slots.any { slot ->
+        slot.obj("messageRenderer")?.display("text")?.contains("Comments are turned off", ignoreCase = true) == true
+    }
+    return CommentPage(comments, sectionContinuation(section) ?: commentNextKey(section), createKey, commentSortOptions(root),
+        total = total, turnedOff = turnedOff)
 }
 
 internal fun commentCreateKey(root: Json.Obj, section: Json.Obj = commentSection(root)): String? =

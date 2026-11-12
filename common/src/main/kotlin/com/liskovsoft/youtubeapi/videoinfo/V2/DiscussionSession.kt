@@ -91,7 +91,8 @@ class CommentThread @JvmOverloads internal constructor(private val session: Acco
             if (!read.ok) return@bound ReadResult(error = read.error)
             val document = read.value!!
             val page = document.page.copy(createKey = document.page.createKey ?: root.watch.commentCreateKey,
-                total = root.watch.commentCount, turnedOff = root.watch.commentsTurnedOff)
+                total = document.page.total ?: root.watch.commentCount,
+                turnedOff = document.page.turnedOff || root.watch.commentsTurnedOff)
             publish(document.copy(page = page), context, true, root, consumedRoute = route)
         }
     }

@@ -4,6 +4,27 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class DiscussionSessionTest {
+    @Test fun theCommentLaneCanDisableCreationWhenTheWatchOpeningHasNoStatusOrCount() {
+        val wire = Wire()
+        wire.opening = watch().replace("\"commentsEntryPointRenderer\":{\"commentCount\":{\"simpleText\":\"45\"}},", "")
+        wire.pages["root"] = page("""{"messageRenderer":{"text":{"simpleText":"Comments are turned off"}}},
+            {"commentsHeaderRenderer":{"countText":{"simpleText":"17 Comments"}}}""")
+        val thread = wire.open()
+        val page = thread.load().value!!
+        assertTrue(page.turnedOff)
+        assertFalse(page.canCreate)
+        assertEquals("17 Comments", page.total)
+        val count = wire.requests.size
+        assertEquals("missing_comment_creation_capability", thread.create("Message").error?.code)
+        assertEquals(count, wire.requests.size)
+    }
+
+    @Test fun theCurrentCommentLaneCountReplacesTheWatchOpeningCount() {
+        val wire = Wire()
+        wire.pages["root"] = page(comment() + """,{"commentsHeaderRenderer":{"countText":{"simpleText":"17 Comments"}}}""")
+        assertEquals("17 Comments", wire.open().load().value!!.total)
+    }
+
     @Test fun anExplicitlyDisabledDiscussionCannotUseAnOtherwisePresentCreationCapability() {
         val wire = Wire()
         wire.opening = watch().dropLast(1) + """, "messageRenderer":{"text":{"simpleText":"Comments are turned off"}}}"""
