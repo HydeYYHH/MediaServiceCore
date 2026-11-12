@@ -111,10 +111,12 @@ private class SearchFilterReader {
                 if ((command.fields.keys - tracking - "commandMetadata").singleOrNull() != "openPopupAction") return
                 val action = command.obj("openPopupAction") ?: error("search filter popup action")
                 val popup = action.obj("popup") ?: error("search filter popup")
-                require((popup.fields.keys - tracking - "commandMetadata").singleOrNull() == "menuRenderer")
-                val menu = popup.obj("menuRenderer") ?: error("search filter menu")
-                path += listOf(command, action, popup, menu)
-                val entries = menu.fields["items"] as? Json.Arr ?: return
+                val popupKind = (popup.fields.keys - tracking - "commandMetadata").singleOrNull()
+                require(popupKind in setOf("menuRenderer", "searchFilterOptionsDialogRenderer"))
+                val collection = popup.obj(popupKind!!) ?: error("search filter popup collection")
+                path += listOf(command, action, popup, collection)
+                val field = if (popupKind == "menuRenderer") "items" else "groups"
+                val entries = collection.fields[field] as? Json.Arr ?: error("search filter popup items")
                 require(entries.items.size <= 128)
                 for (value in entries.items) {
                     val item = value as? Json.Obj ?: continue
