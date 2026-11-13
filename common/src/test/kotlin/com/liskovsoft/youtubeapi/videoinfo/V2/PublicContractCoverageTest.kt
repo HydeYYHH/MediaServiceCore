@@ -242,12 +242,12 @@ class PublicContractCoverageTest {
         assertSame(first, scripts.script("video", context, false).value)
         assertEquals(2, seen.size)
         scripts.script("video", context.copy(onBehalfOfUser = "brand"), false)
-        assertEquals(4, seen.size)
+        assertEquals(3, seen.size) // The account scope resolves its page; public JS bytes are reused.
         scripts.script("video", context, true)
-        assertEquals(6, seen.size)
+        assertEquals(5, seen.size)
         now = 10
         scripts.script("video", context, false)
-        assertEquals(8, seen.size)
+        assertEquals(7, seen.size)
         assertTrue(seen.all { it.method == "GET" && it.headers.isEmpty() })
         assertEquals("https://www.youtube.com/s/player/revision/base.js", seen[1].url)
         var invalidReads = 0

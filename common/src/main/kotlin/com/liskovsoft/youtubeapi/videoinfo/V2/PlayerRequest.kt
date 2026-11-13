@@ -115,7 +115,7 @@ internal fun webQuery(url: String, payload: String, visitor: String?): PlayerQue
         "X-Youtube-Client-Version" to spec.version
     )
     if (!visitor.isNullOrEmpty()) headers["X-Goog-Visitor-Id"] = visitor
-    val body = """{"context":{"client":{"clientName":"${spec.name}","clientVersion":"${spec.version}","hl":"en","gl":"US"}},$payload}"""
+    val body = """{"context":{"client":{"clientName":"${spec.name}","clientVersion":"${spec.version}","hl":"en","gl":"US"}}${if (payload.isEmpty()) "" else "," + payload}}"""
     return PlayerQuery(url, headers, body)
 }
 
