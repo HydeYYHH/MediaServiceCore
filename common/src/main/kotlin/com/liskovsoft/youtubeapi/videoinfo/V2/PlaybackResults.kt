@@ -1,12 +1,13 @@
 package com.liskovsoft.youtubeapi.videoinfo.V2
+import java.util.LinkedHashMap
 
 /** Bounded result cache with a write fence for each video/session, including in-flight loads. */
 internal class PlaybackResults(private val capacity: Int, private val now: () -> Long) {
     data class Ticket(val scope: String, val version: Long)
     private data class Key(val scope: String, val demand: String)
     private data class Entry(val value: PlaybackLoad, val expires: Long)
-    private val versions = java.util.LinkedHashMap<String, Long>(16, .75f, true)
-    private val entries = java.util.LinkedHashMap<Key, Entry>(16, .75f, true)
+    private val versions = LinkedHashMap<String, Long>(16, .75f, true)
+    private val entries = LinkedHashMap<Key, Entry>(16, .75f, true)
     private var sequence = 0L
     private var epoch = 0L
 

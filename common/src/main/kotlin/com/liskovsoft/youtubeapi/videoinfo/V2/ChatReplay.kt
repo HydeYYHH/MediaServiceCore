@@ -1,4 +1,6 @@
 package com.liskovsoft.youtubeapi.videoinfo.V2
+import java.io.Closeable
+import java.util.LinkedHashSet
 
 data class ChatEvent(val offsetMs: Long?, val action: ChatAction)
 
@@ -15,11 +17,11 @@ fun loadChatReplay(continuation: String, positionMs: Long = 0, context: RequestC
 }
 
 class ChatReplay(private val key: String, session: AccountSession = AccountSession(),
-    private val http: HttpClient = JvmHttpClient()) : java.io.Closeable {
+    private val http: HttpClient = JvmHttpClient()) : Closeable {
     @Volatile private var closed = false
     private var next: String? = key
     private var position = -1L
-    private val seen = java.util.LinkedHashSet<String>()
+    private val seen = LinkedHashSet<String>()
     private val binding = ChatSessionBinding(session)
     init { require(key.isNotBlank()) }
 

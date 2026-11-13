@@ -1,4 +1,5 @@
 package com.liskovsoft.youtubeapi.videoinfo.V2
+import java.security.SecureRandom
 
 private const val PLAYER_URL = "https://www.youtube.com/youtubei/v1/player?prettyPrint=false"
 private const val WEB_VERSION = "2.20260907.06.00"
@@ -10,7 +11,7 @@ private val VIDEO_ID = Regex("^[A-Za-z0-9_-]+$")
 private const val REEL_URL = "https://www.youtube.com/youtubei/v1/reel/reel_item_watch?prettyPrint=false"
 private const val REEL_AGENT = "com.google.android.youtube/21.03.36 (Linux; U; Android 16; US) gzip"
 private const val NONCE_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
-private val nonceRandom = java.security.SecureRandom()
+private val nonceRandom = SecureRandom()
 
 internal fun nonce(length: Int): String {
     val builder = StringBuilder(length)

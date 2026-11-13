@@ -1,4 +1,6 @@
 package com.liskovsoft.youtubeapi.videoinfo.V2
+import java.text.NumberFormat
+import java.util.Locale
 
 data class CommentActionReply(val comment: Comment?, val action: ActionReply)
 internal fun queryInContext(query: PlayerQuery, context: RequestContext): PlayerQuery {
@@ -90,7 +92,7 @@ private fun rateCommentWithIntent(comment: Comment, voteOf: (Comment) -> Comment
     val number = source.likeCount?.replace(",", "")?.toLongOrNull()
         ?: 0L.takeIf { source.likeCount.isNullOrBlank() }
     val count = if (delta == 0 || number == null) source.likeCount else
-        java.text.NumberFormat.getIntegerInstance(java.util.Locale.US).format((number + delta).coerceAtLeast(0))
+        NumberFormat.getIntegerInstance(Locale.US).format((number + delta).coerceAtLeast(0))
     // Preserve the resolved detail-page action tokens for the next toggle.
     val entity = reply.comment?.takeIf { it.id == source.id }
     val updated = source.copy(liked = liked, disliked = disliked,

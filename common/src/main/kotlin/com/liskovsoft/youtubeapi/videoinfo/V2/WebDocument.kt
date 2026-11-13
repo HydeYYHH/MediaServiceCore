@@ -1,5 +1,7 @@
 package com.liskovsoft.youtubeapi.videoinfo.V2
 
+import java.net.URLEncoder
+
 internal fun initialDataDocument(html: String): Json.Obj? {
     val match = Regex("(?:var\\s+)?ytInitialData\\s*=\\s*|window\\[\"ytInitialData\"\\]\\s*=\\s*").find(html) ?: return null
     val tail = html.substring(match.range.last + 1).trimStart()
@@ -43,7 +45,7 @@ internal fun loadShortsDocument(context: RequestContext, http: HttpClient): Read
     val cookies = session?.cookies ?: context.visitorCookie?.takeIf { it.isNotBlank() }
     val headers = mapOf("User-Agent" to "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Chrome/120.0 Mobile Safari/537.36") +
         cookies?.let { mapOf("Cookie" to it) }.orEmpty()
-    val url = "https://m.youtube.com/shorts?hl=${java.net.URLEncoder.encode(context.language, "UTF-8")}" +
+    val url = "https://m.youtube.com/shorts?hl=${URLEncoder.encode(context.language, "UTF-8")}" +
         session?.let { "&authuser=${it.accountIndex}" }.orEmpty()
     val reply = requestBody(HttpRequest("GET", url, headers), http)
     if (!reply.ok) return ReadResult(error = reply.error)

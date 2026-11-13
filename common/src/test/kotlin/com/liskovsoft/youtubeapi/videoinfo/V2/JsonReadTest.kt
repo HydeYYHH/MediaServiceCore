@@ -29,4 +29,15 @@ class JsonReadTest {
         val value = "a\u0000\b\n\t\\\"你好"
         assertEquals(value, (jsonValue(jsonQuote(value)) as Json.Str).value)
     }
+
+    @Test fun readsPlainSpansAndEscapesWithoutLosingTheirBoundaries() {
+        val prefix = "text 中文🙂 ".repeat(1000)
+        val suffix = "ending text ".repeat(1000)
+        val cases = listOf("", prefix, "$prefix\n$suffix", "\n$prefix", "$prefix\n",
+            "\n\t\u0000", "$prefix\"\\/$suffix")
+        for (value in cases) assertEquals(value, (jsonValue(jsonQuote(value)) as Json.Str).value)
+        assertEquals("aA你好🙂z", (jsonValue("\"a\\u0041\\u4f60\\u597D\\ud83d\\ude42z\"") as Json.Str).value)
+        for (text in listOf("\"$prefix\u0001\"", "\"$prefix\\n\u0001\"", "\"$prefix\\u12x4\"",
+            "\"$prefix\\u123\"", "\"$prefix\\q\"", "\"$prefix\\", "\"$prefix")) assertNull(jsonValue(text))
+    }
 }

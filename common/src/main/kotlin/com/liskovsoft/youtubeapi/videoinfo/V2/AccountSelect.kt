@@ -1,5 +1,7 @@
 package com.liskovsoft.youtubeapi.videoinfo.V2
 
+import java.util.Locale
+
 data class Account @JvmOverloads constructor(val id: String, val name: String?, val email: String?, val photo: String?,
     val selected: Boolean, val disabled: Boolean, val pageId: String?, val handle: String? = null)
 fun readAccounts(body: String): List<Account> {
@@ -45,6 +47,18 @@ class AccountSession(private var context: RequestContext = RequestContext()) {
     @Synchronized fun snapshot(expectedGeneration: Long): ReadResult<RequestContext> =
         if (context.generation == expectedGeneration) ReadResult(context) else sessionChanged()
     @Synchronized fun accounts(): List<Account> = accounts.toList()
+
+    /** Locale changes retire old reads without revalidating or changing the installed identity. */
+    @Synchronized fun updateLocale(language: String, region: String): RequestContext {
+        require(language.matches(Regex("[A-Za-z]{2,8}(?:-[A-Za-z0-9]{1,8})*"))) { "Invalid language" }
+        require(region.matches(Regex("[A-Za-z]{2}|[0-9]{3}"))) { "Invalid region" }
+        val country = region.uppercase(Locale.ROOT)
+        if (context.language == language && context.region == country) return context
+        check(context.generation < Long.MAX_VALUE) { "Session generation exhausted" }
+        revision++
+        context = context.copy(language = language, region = country, generation = context.generation + 1)
+        return context
+    }
 
     /** Retire issued operations while retaining this host-owned account or visitor profile. */
     @JvmOverloads @Synchronized fun invalidate(minimumGeneration: Long = 0): RequestContext {
@@ -100,8 +114,13 @@ class AccountSession(private var context: RequestContext = RequestContext()) {
                 before.webSession?.accountIndex == webSession.accountIndex
             context = candidate.copy(accountId = identity.id, onBehalfOfUser = pageId,
                 generation = before.generation + if (unchanged) 0 else 1)
-            accounts = profiles.value.map { if (it === match) identity.copy(pageId = pageId, selected = true, handle = identity.handle ?: match.handle)
-                else it.copy(selected = false) }
+            val known = if (before.signedIn && before.webSession?.accountIndex == webSession.accountIndex)
+                accounts.associateBy { it.id } else emptyMap()
+            accounts = profiles.value.map { profile ->
+                val verified = if (profile === match) match.withLabelsFrom(identity).copy(pageId = pageId, selected = true)
+                    else profile.copy(selected = false)
+                verified.withLabelsFrom(known[verified.id])
+            }
             ReadResult(context)
         }
     }
@@ -115,7 +134,7 @@ class AccountSession(private var context: RequestContext = RequestContext()) {
         val selected = items.firstOrNull { it.id == context.accountId } ?: return false
         if (selected.pageId != context.onBehalfOfUser) return false
         revision++
-        accounts = items.map { it.copy(selected = it.id == selected.id) }
+        accounts = items.map { it.withLabelsFrom(known[it.id]).copy(selected = it.id == selected.id) }
         return true
     }
     @Synchronized fun select(id: String): Boolean {
@@ -134,6 +153,14 @@ class AccountSession(private var context: RequestContext = RequestContext()) {
 
     private fun sameAccount(first: Account, second: Account): Boolean =
         first.id == second.id && first.pageId == second.pageId
+
+    private fun Account.withLabelsFrom(known: Account?): Account {
+        if (known == null || !sameAccount(this, known)) return this
+        return copy(name = name?.takeIf(String::isNotBlank) ?: known.name,
+            email = email?.takeIf(String::isNotBlank) ?: known.email,
+            photo = photo?.takeIf(String::isNotBlank) ?: known.photo,
+            handle = handle?.takeIf(String::isNotBlank) ?: known.handle)
+    }
 
     @Synchronized private fun currentRevision(expected: Long) = revision == expected
 

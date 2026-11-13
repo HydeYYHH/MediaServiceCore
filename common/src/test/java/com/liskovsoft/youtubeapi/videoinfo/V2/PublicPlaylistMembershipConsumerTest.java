@@ -1,6 +1,7 @@
 package com.liskovsoft.youtubeapi.videoinfo.V2;
 
 import java.util.Collections;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.Test;
 import static org.junit.Assert.*;
@@ -38,13 +39,13 @@ public class PublicPlaylistMembershipConsumerTest {
         PlaylistMembershipSession issuer = new PlaylistMembershipSession(account, response);
         assertTrue(issuer.open("jNQXAC9IVRw").getOk());
         assertEquals(1, calls.get());
-        java.util.List<MembershipChoice> choices = Collections.singletonList(new MembershipChoice(
+        List<MembershipChoice> choices = Collections.singletonList(new MembershipChoice(
             new PlaylistChoice("PLnot-issued", "Not discovered", false, false), true));
         PlaylistMembershipDirectory withoutIssuer = new PlaylistMembershipDirectory(account, 2L, response,
             "jNQXAC9IVRw", choices);
         PlaylistMembershipDirectory copiedIssuer = new PlaylistMembershipDirectory(account, 2L, response,
             "jNQXAC9IVRw", choices, issuer);
-        for (PlaylistMembershipDirectory forged : java.util.List.of(withoutIssuer, copiedIssuer)) {
+        for (PlaylistMembershipDirectory forged : List.of(withoutIssuer, copiedIssuer)) {
             ReadResult<PlaylistMembershipUpdate> result = forged.setContains(forged.getEntries().get(0), true);
             assertEquals(RequestFailure.INVALID, result.getError().getKind());
             assertEquals("unissued_playlist_membership_directory", result.getError().getCode());

@@ -1,5 +1,7 @@
 package com.liskovsoft.youtubeapi.videoinfo.V2
 
+import java.lang.Boolean as JavaBoolean
+
 import org.junit.Assert.*
 import org.junit.Test
 
@@ -132,7 +134,7 @@ class NoticePreferencesTest {
         val parsed = noticeStates(legacy).single()
         assertTrue(parsed.selected); assertTrue(parsed.disabled); assertEquals(2, parsed.stateId)
         val old = NoticeState::class.java.getConstructor(String::class.java, Integer::class.java,
-            String::class.java, java.lang.Boolean.TYPE).newInstance(parsed.title, parsed.stateId, parsed.params, parsed.selected)
+            String::class.java, JavaBoolean.TYPE).newInstance(parsed.title, parsed.stateId, parsed.params, parsed.selected)
         assertEquals(parsed.title, old.title); assertEquals(parsed.params, old.params)
         assertEquals(parsed.stateId, old.stateId); assertTrue(old.selected); assertFalse(old.disabled)
         assertEquals(NoticeState(parsed.title, parsed.stateId, parsed.params, parsed.selected, true), parsed)

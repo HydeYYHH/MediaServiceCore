@@ -3,6 +3,7 @@ package com.liskovsoft.youtubeapi.videoinfo.V2;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Set;
@@ -56,7 +57,7 @@ public class PublicContractJavaApiTest {
         assertTrue(solved.getAnswer().getMuxedFormats().get(0).getUrl().contains("sig=solved"));
         assertTrue(solved.getAnswer().getMuxedFormats().get(0).getUrl().contains("pot=MEDIA"));
         assertEquals(1, solves.get());
-        assertEquals(java.util.Arrays.asList(TokenPurpose.PLAYER, TokenPurpose.MEDIA), minted);
+        assertEquals(Arrays.asList(TokenPurpose.PLAYER, TokenPurpose.MEDIA), minted);
 
         PlayerClientQueues queues = new PlayerClientQueues(PlayerClient.WEB);
         assertEquals(PlayerClient.WEB, loaded(PlayerContextKt.loadPlayer("video", context, direct, script, null, null, queues)).getClient());

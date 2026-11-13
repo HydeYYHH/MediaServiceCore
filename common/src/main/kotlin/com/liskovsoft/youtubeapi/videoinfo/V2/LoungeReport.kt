@@ -1,4 +1,5 @@
 package com.liskovsoft.youtubeapi.videoinfo.V2
+import java.net.URLEncoder
 
 private const val BIND_BASE = "https://www.youtube.com/api/lounge/bc/bind" +
     "?device=LOUNGE_SCREEN" +
@@ -415,4 +416,4 @@ private fun formBody(fields: List<Pair<String, String>>): String {
     return out.toString()
 }
 
-private fun encode(value: String): String = java.net.URLEncoder.encode(value, "UTF-8").replace("+", "%20")
+private fun encode(value: String): String = URLEncoder.encode(value, "UTF-8").replace("+", "%20")

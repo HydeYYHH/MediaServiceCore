@@ -1,7 +1,11 @@
 package com.liskovsoft.youtubeapi.videoinfo.V2
 
 /** [params] is absent for a selected display-only option with no navigation capability. */
-data class SearchFilter(val title: String?, val group: String?, val params: String?, val selected: Boolean)
+data class SearchFilter @JvmOverloads constructor(val title: String?, val group: String?, val params: String?, val selected: Boolean,
+    /** A declared query is checked against the network read before this option can be issued. */
+    val query: String? = null, val groupIndex: Int = 0) {
+    val state: SearchFilterState? by lazy { params?.let(::searchFilterState) }
+}
 fun searchFilters(body: String): List<SearchFilter> = searchFilters(jsonObject(body))
 internal fun searchFilters(root: Json.Obj?): List<SearchFilter> {
     root ?: return emptyList()

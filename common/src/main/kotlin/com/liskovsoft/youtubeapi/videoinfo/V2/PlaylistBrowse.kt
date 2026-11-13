@@ -14,11 +14,12 @@ data class PlaylistVideo(
     val setVideoId: String? = null
 )
 
-data class PlaylistPage(
+data class PlaylistPage @JvmOverloads constructor(
     val title: String?,
     val owner: String?,
     val videos: List<PlaylistVideo>,
-    val nextKey: String?
+    val nextKey: String?,
+    val ownerInfo: AuthorInfo? = null
 )
 
 fun playlistBrowseQuery(playlistId: String?, continuation: String?, visitor: String?): PlayerQuery {
@@ -48,7 +49,8 @@ internal fun playlistPage(root: Json.Obj, owned: OwnedPlaylistCollection): Playl
             ?: modern?.objects("avatarStackViewModel")?.firstOrNull()?.display("text")
             ?: entity?.arr("bylines")?.firstOrNull()?.objects("lineItemRenderer")?.firstNotNullOfOrNull { it.display("text") },
         owned.entries.mapNotNull { playlistEntry(it, owned.playlistId) },
-        owned.nextKey
+        owned.nextKey,
+        playlistOwner(root)
     )
 }.getOrNull()
 

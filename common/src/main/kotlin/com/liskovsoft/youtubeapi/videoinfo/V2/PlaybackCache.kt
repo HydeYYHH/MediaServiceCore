@@ -1,8 +1,9 @@
 package com.liskovsoft.youtubeapi.videoinfo.V2
+import java.util.LinkedHashMap
 
 internal class TimedCache<K, V>(private val capacity: Int, private val now: () -> Long) {
     private data class Entry<V>(val value: V, val expires: Long)
-    private val entries = java.util.LinkedHashMap<K, Entry<V>>(16, 0.75f, true)
+    private val entries = LinkedHashMap<K, Entry<V>>(16, 0.75f, true)
     private var epoch = 0L
     init { require(capacity > 0) }
     @Synchronized fun generation() = epoch

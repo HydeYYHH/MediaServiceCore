@@ -1,5 +1,7 @@
 package com.liskovsoft.youtubeapi.videoinfo.V2
 
+import java.net.URI
+
 import org.junit.Assert.*
 import org.junit.Test
 
@@ -451,7 +453,7 @@ class PostNetworkSourceIsolationTest {
         val paths = mutableListOf<String>()
         val wire = object : HttpClient {
             override fun execute(request: HttpRequest): HttpReply {
-                val path = java.net.URI(request.url).path
+                val path = URI(request.url).path
                 paths += path
                 return if (path == "/youtubei/v1/browse") HttpReply(200, page(post(extra = buttons(endpoint))))
                 else {

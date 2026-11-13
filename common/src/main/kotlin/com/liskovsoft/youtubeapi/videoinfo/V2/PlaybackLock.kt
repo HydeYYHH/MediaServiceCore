@@ -1,4 +1,5 @@
 package com.liskovsoft.youtubeapi.videoinfo.V2
+import java.util.concurrent.CountDownLatch
 
 interface PlaybackCache {
     fun script(url: String): String?
@@ -44,7 +45,7 @@ class PlaybackLock {
     }
 
     private class Slot {
-        private val done = java.util.concurrent.CountDownLatch(1)
+        private val done = CountDownLatch(1)
         private var result: PlaybackLoad? = null
         private var error: Throwable? = null
 

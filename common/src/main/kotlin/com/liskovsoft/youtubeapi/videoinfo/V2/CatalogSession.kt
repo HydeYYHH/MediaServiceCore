@@ -1,14 +1,17 @@
 package com.liskovsoft.youtubeapi.videoinfo.V2
 
+import java.util.WeakHashMap
+
 /** Server-issued navigation. Neither the client profile nor continuation text is an App concern. */
 class CatalogCursor internal constructor(internal val owner: CatalogSession, internal val generation: Long,
     internal val route: CatalogRoute, internal val key: String?) {
     override fun toString() = "CatalogCursor(generation=$generation)"
 }
 
-class CatalogFilter internal constructor(val title: String?, val group: String?, val selected: Boolean,
+class CatalogFilter @JvmOverloads internal constructor(val title: String?, val group: String?, val selected: Boolean,
     val available: Boolean, internal val owner: CatalogSession, internal val generation: Long,
-    internal val query: String, internal val parameters: String?) {
+    internal val query: String, internal val parameters: String?, val groupIndex: Int = 0) {
+    val state: SearchFilterState? = parameters?.let(::searchFilterState)
     override fun toString() = "CatalogFilter(selected=$selected, available=$available)"
 }
 
@@ -26,7 +29,8 @@ class CatalogGroup @JvmOverloads internal constructor(val title: String?, val it
 /** A complete preparation pass; absent artwork has an explicit reason and causes no lazy IO. */
 class CatalogPage @JvmOverloads internal constructor(val items: List<PreparedMediaItem>, val groups: List<CatalogGroup>,
     val filters: List<CatalogFilter>, val next: CatalogCursor?, val messages: List<String>,
-    val preparationRequestCount: Int, val actions: List<PageAction> = emptyList()) {
+    val preparationRequestCount: Int, val actions: List<PageAction> = emptyList(),
+    val searchState: SearchFilterState? = null) {
     val empty: Boolean get() = items.isEmpty() && groups.all { it.items.isEmpty() }
 }
 
@@ -51,8 +55,8 @@ class CatalogSession @JvmOverloads constructor(private val session: AccountSessi
     private val http: HttpClient = JvmHttpClient(), private val authorRequestBudget: Int = 0) {
     init { require(authorRequestBudget in 0..32) }
     private val preparation = PagePreparation(http)
-    private val issuedCursors = java.util.WeakHashMap<CatalogCursor, Unit>()
-    private val issuedFilters = java.util.WeakHashMap<CatalogFilter, Unit>()
+    private val issuedCursors = WeakHashMap<CatalogCursor, Unit>()
+    private val issuedFilters = WeakHashMap<CatalogFilter, Unit>()
 
     @JvmOverloads fun home(section: HomeSection = HomeSection.HOME, http: HttpClient = this.http): ReadResult<CatalogPage> =
         open(if (section == HomeSection.HOME) CatalogRoute.Home else CatalogRoute.Topic(section), http)
@@ -163,7 +167,7 @@ class CatalogSession @JvmOverloads constructor(private val session: AccountSessi
                     if (!loaded.ok) ReadResult(error = loaded.error) else {
                         val page = loaded.value!!
                         val filters = page.filters.map { filter -> CatalogFilter(filter.title, filter.group, filter.selected,
-                            !filter.params.isNullOrBlank(), this, generation, route.query, filter.params).also {
+                            !filter.params.isNullOrBlank(), this, generation, route.query, filter.params, filter.groupIndex).also {
                             synchronized(issuedFilters) { issuedFilters[it] = Unit }
                         } }
                         prepare(page.items, page.groups, page.nextKey, page.messages, filters, route, context, bound, page.actions)
@@ -226,7 +230,8 @@ class CatalogSession @JvmOverloads constructor(private val session: AccountSessi
             val group = CatalogGroup(it.title, it.items.map { item -> byItem.getValue(item) }, it.actions.toList())
             if (!it.nextKey.isNullOrBlank()) group.withoutContinuationRoute() else group
         }, filters.toList(), next ?: key?.takeIf { it.isNotBlank() && route != null }?.let { issue(context.generation, route!!, it) },
-            messages.toList(), value.requestCount, actions.toList()))
+            messages.toList(), value.requestCount, actions.toList(),
+            if (route is CatalogRoute.Search) searchFilterState(route.params) else null))
     }
 
     private fun issue(generation: Long, route: CatalogRoute, key: String?): CatalogCursor =

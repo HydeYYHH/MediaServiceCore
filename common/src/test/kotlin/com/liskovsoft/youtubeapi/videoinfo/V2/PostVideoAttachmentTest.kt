@@ -1,5 +1,7 @@
 package com.liskovsoft.youtubeapi.videoinfo.V2
 
+import java.net.URI
+
 import org.junit.Assert.*
 import org.junit.Test
 
@@ -40,7 +42,7 @@ class PostVideoAttachmentTest {
         var calls = 0
         val result = loadChannelPosts(channel, params = "ISSUED", http = object : HttpClient {
             override fun execute(request: HttpRequest): HttpReply {
-                calls++; assertEquals("/youtubei/v1/browse", java.net.URI(request.url).path)
+                calls++; assertEquals("/youtubei/v1/browse", URI(request.url).path)
                 return HttpReply(200, body)
             }
         })
@@ -65,7 +67,7 @@ class PostVideoAttachmentTest {
         val bodies = mutableListOf<String>()
         val result = loadChannelPosts(channel, http = object : HttpClient {
             override fun execute(request: HttpRequest): HttpReply {
-                assertEquals("POST", request.method); assertEquals("/youtubei/v1/browse", java.net.URI(request.url).path)
+                assertEquals("POST", request.method); assertEquals("/youtubei/v1/browse", URI(request.url).path)
                 val body = jsonObject(request.body)!!; bodies += request.body
                 assertEquals(channel, body.text("browseId")); assertNull(body.text("continuation"))
                 if (bodies.size == 1) { assertNull(body.text("params")); return HttpReply(200, landing(false)) }
@@ -85,7 +87,7 @@ class PostVideoAttachmentTest {
         var calls = 0
         val result = loadPost(id, object : HttpClient {
             override fun execute(request: HttpRequest): HttpReply {
-                calls++; assertEquals("GET", request.method); assertEquals("/post/$id", java.net.URI(request.url).path)
+                calls++; assertEquals("GET", request.method); assertEquals("/post/$id", URI(request.url).path)
                 return HttpReply(200, "<script>var ytInitialData = " + page() + ";</script>")
             }
         })

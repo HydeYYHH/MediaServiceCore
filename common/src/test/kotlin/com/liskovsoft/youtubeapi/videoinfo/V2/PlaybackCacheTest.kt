@@ -1,19 +1,24 @@
 package com.liskovsoft.youtubeapi.videoinfo.V2
 import org.junit.Assert.*
 import org.junit.Test
+import java.util.concurrent.Callable
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 class PlaybackCacheTest {
     @Test fun invalidationDuringALoadCannotRepopulateTheOldGeneration() {
-        val entered=java.util.concurrent.CountDownLatch(1);val release=java.util.concurrent.CountDownLatch(1)
-        val count=java.util.concurrent.atomic.AtomicInteger()
+        val entered=CountDownLatch(1);val release=CountDownLatch(1)
+        val count=AtomicInteger()
         val http=object:HttpClient{override fun execute(request:HttpRequest):HttpReply {
-            if(count.incrementAndGet()==1){entered.countDown();release.await(5,java.util.concurrent.TimeUnit.SECONDS)}
+            if(count.incrementAndGet()==1){entered.countDown();release.await(5,TimeUnit.SECONDS)}
             return HttpReply(200,"{\"streamingData\":{\"formats\":[{\"url\":\"https://media\"}]}}")
         }}
-        val session=PlaybackSession(http);val pool=java.util.concurrent.Executors.newSingleThreadExecutor()
+        val session=PlaybackSession(http);val pool=Executors.newSingleThreadExecutor()
         try {
-            val first=pool.submit(java.util.concurrent.Callable{session.load("v")})
-            assertTrue(entered.await(2,java.util.concurrent.TimeUnit.SECONDS));session.invalidate();release.countDown()
-            assertTrue(first.get(2,java.util.concurrent.TimeUnit.SECONDS).ok)
+            val first=pool.submit(Callable{session.load("v")})
+            assertTrue(entered.await(2,TimeUnit.SECONDS));session.invalidate();release.countDown()
+            assertTrue(first.get(2,TimeUnit.SECONDS).ok)
             assertTrue(session.load("v").ok);assertEquals(2,count.get())
         } finally {release.countDown();pool.shutdownNow()}
     }

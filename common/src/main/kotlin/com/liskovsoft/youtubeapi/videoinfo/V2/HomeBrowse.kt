@@ -1,4 +1,5 @@
 package com.liskovsoft.youtubeapi.videoinfo.V2
+import java.util.Locale
 
 enum class HomeSection { HOME, SHORTS, LIVE, MUSIC, GAMING, NEWS, SPORTS, MOVIES, KIDS }
 fun homeQuery(section: HomeSection = HomeSection.HOME, context: RequestContext = RequestContext(), continuation: String? = null): PlayerQuery {
@@ -8,7 +9,7 @@ fun homeQuery(section: HomeSection = HomeSection.HOME, context: RequestContext =
     if (section == HomeSection.SHORTS) return youtubeQuery(YOUTUBE_API + "reel/reel_watch_sequence",
         if (continuation != null) payload("sequenceParams" to continuation) else
             "\"disablePlayerResponse\":true,\"inputType\":\"REEL_WATCH_INPUT_TYPE_SEEDLESS\",\"params\":\"CA8%3D\"", context)
-    val id = "FEtopics_" + section.name.lowercase(java.util.Locale.ROOT)
+    val id = "FEtopics_" + section.name.lowercase(Locale.ROOT)
     val fields = if (continuation != null) payload("continuation" to continuation)
         else payload("browseId" to id)
     // Topic ids are dead for the WEB client (HTTP 400); the TV client serves them.

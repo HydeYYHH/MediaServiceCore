@@ -1,4 +1,5 @@
 package com.liskovsoft.youtubeapi.videoinfo.V2
+import java.util.ArrayDeque
 
 private val pageGroups = setOf("shelfRenderer", "richShelfRenderer")
 private val pageExcluded = setOf("header", "menu", "sortFilterSubMenuRenderer", "subMenuItems", "chips",
@@ -10,7 +11,7 @@ internal fun pageKey(root: Json, forwardOnly: Boolean = false): String? = pageKe
 private data class PageKeyResult(val key: String?, val ambiguous: Boolean = false)
 
 private fun pageKeyResult(root: Json, forwardOnly: Boolean): PageKeyResult {
-    val pending = java.util.ArrayDeque<Json>()
+    val pending = ArrayDeque<Json>()
     val outerKeys = ArrayList<String>()
     val sectionKeys = ArrayList<String>()
     var sectionAmbiguous = false

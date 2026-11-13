@@ -1,5 +1,7 @@
 package com.liskovsoft.youtubeapi.videoinfo.V2;
 
+import java.util.Collections;
+
 import org.junit.Test;
 import static org.junit.Assert.*;
 
@@ -9,7 +11,7 @@ public class PublicCatalogConsumerTest {
         AccountSession account = new AccountSession();
         new CatalogSession(account).clearPreparedData();
         HttpClient transport = request -> new HttpReply(200,
-            "{\"contents\":{\"richGridRenderer\":{\"contents\":[]}}}", java.util.Collections.emptyMap());
+            "{\"contents\":{\"richGridRenderer\":{\"contents\":[]}}}", Collections.emptyMap());
         CatalogSession shortConstructor = new CatalogSession(account, transport);
         CatalogSession fullConstructor = new CatalogSession(account, transport, 0);
         CatalogPage page = shortConstructor.home().getValue();

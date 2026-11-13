@@ -1,6 +1,7 @@
 package com.liskovsoft.youtubeapi.videoinfo.V2
 
 import java.net.URI
+import java.util.ArrayDeque
 
 /** The host supplies a browser runtime; protocol and identity remain in the core. */
 fun interface ActionAttestationProvider {
@@ -19,7 +20,7 @@ class ActionAttestationChallenge(
 }
 
 internal fun actionAttestationCommands(root: Json.Obj): List<Json.Obj> {
-    val pending = java.util.ArrayDeque<Json.Obj>()
+    val pending = ArrayDeque<Json.Obj>()
     val commands = mutableListOf<Json.Obj>()
     pending.add(root)
     root.obj("command")?.let(pending::add)

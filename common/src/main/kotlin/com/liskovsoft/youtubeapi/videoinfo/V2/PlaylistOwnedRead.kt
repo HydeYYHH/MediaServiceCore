@@ -1,4 +1,5 @@
 package com.liskovsoft.youtubeapi.videoinfo.V2
+import java.util.ArrayDeque
 
 /** Entries and the forward cursor must be issued by the same playlist collection. */
 internal data class OwnedPlaylistCollection(val entries: List<Json.Obj>, val nextKey: String?, val playlistId: String?)
@@ -271,7 +272,7 @@ private class PlaylistCollectionReader(expectedPlaylistId: String?) {
     private fun arr(node: Json.Obj, name: String): Json.Arr = node.fields[name] as? Json.Arr ?: error("playlist_array")
 
     private fun budget(root: Json) {
-        val pending = java.util.ArrayDeque<Pair<Json, Int>>()
+        val pending = ArrayDeque<Pair<Json, Int>>()
         pending.add(root to 0)
         var nodes = 0
         var text = 0L

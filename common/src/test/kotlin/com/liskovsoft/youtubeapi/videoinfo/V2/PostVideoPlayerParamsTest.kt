@@ -1,5 +1,7 @@
 package com.liskovsoft.youtubeapi.videoinfo.V2
 
+import java.net.URI
+
 import org.junit.Assert.*
 import org.junit.Test
 
@@ -46,7 +48,7 @@ class PostVideoPlayerParamsTest {
                 calls++
                 assertEquals(1, calls)
                 assertEquals("POST", request.method)
-                assertEquals("/youtubei/v1/browse", java.net.URI(request.url).path)
+                assertEquals("/youtubei/v1/browse", URI(request.url).path)
                 val query = jsonObject(request.body)!!
                 assertEquals(channel, query.text("browseId"))
                 assertNull(query.text("params")); assertNull(query.text("continuation"))
@@ -153,7 +155,7 @@ class PostVideoPlayerParamsTest {
             override fun execute(request: HttpRequest): HttpReply {
                 calls++; assertEquals(1, calls)
                 assertEquals("GET", request.method)
-                assertEquals("/post/$postId", java.net.URI(request.url).path)
+                assertEquals("/post/$postId", URI(request.url).path)
                 val body = obj("contents" to Json.Arr(listOf(post(video)))).encode()
                 return HttpReply(200, "<script>var ytInitialData = $body;</script>")
             }

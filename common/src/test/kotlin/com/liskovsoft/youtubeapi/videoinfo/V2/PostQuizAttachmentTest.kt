@@ -1,5 +1,7 @@
 package com.liskovsoft.youtubeapi.videoinfo.V2
 
+import java.net.URI
+
 import org.junit.Assert.*
 import org.junit.Test
 
@@ -24,7 +26,7 @@ class PostQuizAttachmentTest {
         var count = 0
         val result = loadChannelPosts(channel, params = "ISSUED", http = object : HttpClient {
             override fun execute(request: HttpRequest): HttpReply {
-                count++; assertEquals("POST", request.method); assertEquals("/youtubei/v1/browse", java.net.URI(request.url).path)
+                count++; assertEquals("POST", request.method); assertEquals("/youtubei/v1/browse", URI(request.url).path)
                 return HttpReply(200, body)
             }
         })
@@ -68,7 +70,7 @@ class PostQuizAttachmentTest {
         var count = 0
         val result = loadPost(id, object : HttpClient {
             override fun execute(request: HttpRequest): HttpReply {
-                count++; assertEquals("GET", request.method); assertEquals("/post/$id", java.net.URI(request.url).path)
+                count++; assertEquals("GET", request.method); assertEquals("/post/$id", URI(request.url).path)
                 return HttpReply(200, "<script>var ytInitialData = " + page(post()) + ";</script>")
             }
         })

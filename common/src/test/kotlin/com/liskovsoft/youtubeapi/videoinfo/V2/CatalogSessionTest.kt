@@ -1,5 +1,7 @@
 package com.liskovsoft.youtubeapi.videoinfo.V2
 
+import java.net.URI
+
 import org.junit.Assert.*
 import org.junit.Test
 
@@ -99,7 +101,7 @@ class CatalogSessionTest {
     }
     @Test fun relatedCardsAndGroupsArePreparedWithoutHiddenNetworkCalls() {
         val http = Wire { request, _ ->
-            assertEquals("/youtubei/v1/next", java.net.URI(request.url).path)
+            assertEquals("/youtubei/v1/next", URI(request.url).path)
             HttpReply(200, """{"contents":{"twoColumnWatchNextResults":{"secondaryResults":{"secondaryResults":{"results":[$card]}}}}}""")
         }
         val catalog = CatalogSession(AccountSession(), http)

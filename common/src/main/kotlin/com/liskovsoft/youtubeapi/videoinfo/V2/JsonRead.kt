@@ -53,31 +53,42 @@ internal class JsonReader(private val text: String) {
     }
     private fun str(): String {
         expect('"')
-        val out = StringBuilder()
+        var start = i
+        var out: StringBuilder? = null
         while (i < text.length) {
             val c = text[i++]
-            if (c == '"') return out.toString()
+            if (c == '"') return out?.append(text, start, i - 1)?.toString() ?: text.substring(start, i - 1)
             if (c < ' ') throw JsonEnd()
-            if (c != '\\') { out.append(c); continue }
+            if (c != '\\') continue
+            val escaped = out ?: StringBuilder().also { out = it }
+            escaped.append(text, start, i - 1)
             if (i == text.length) throw JsonEnd()
             when (text[i++]) {
-                '"' -> out.append('"')
-                '\\' -> out.append('\\')
-                '/' -> out.append('/')
-                'b' -> out.append('\b')
-                'f' -> out.append('\u000c')
-                'n' -> out.append('\n')
-                'r' -> out.append('\r')
-                't' -> out.append('\t')
+                '"' -> escaped.append('"')
+                '\\' -> escaped.append('\\')
+                '/' -> escaped.append('/')
+                'b' -> escaped.append('\b')
+                'f' -> escaped.append('\u000c')
+                'n' -> escaped.append('\n')
+                'r' -> escaped.append('\r')
+                't' -> escaped.append('\t')
                 'u' -> {
                     if (i + 4 > text.length) throw JsonEnd()
-                    val hex = text.substring(i, i + 4)
-                    if (hex.any { it !in "0123456789abcdefABCDEF" }) throw JsonEnd()
-                    out.append(hex.toInt(16).toChar())
-                    i += 4
+                    var code = 0
+                    repeat(4) {
+                        val digit = when (val hex = text[i++]) {
+                            in '0'..'9' -> hex - '0'
+                            in 'a'..'f' -> hex - 'a' + 10
+                            in 'A'..'F' -> hex - 'A' + 10
+                            else -> throw JsonEnd()
+                        }
+                        code = code * 16 + digit
+                    }
+                    escaped.append(code.toChar())
                 }
                 else -> throw JsonEnd()
             }
+            start = i
         }
         throw JsonEnd()
     }

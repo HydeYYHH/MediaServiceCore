@@ -1,4 +1,5 @@
 package com.liskovsoft.youtubeapi.videoinfo.V2
+import java.net.URLEncoder
 
 private const val SCREEN_URL = "https://www.youtube.com/api/lounge/pairing/generate_screen_id"
 private const val TOKEN_URL = "https://www.youtube.com/api/lounge/pairing/get_lounge_token_batch"
@@ -107,7 +108,7 @@ private fun formBody(fields: List<Pair<String, String>>): String {
     return out.toString()
 }
 
-private fun encode(value: String): String = java.net.URLEncoder.encode(value, "UTF-8").replace("+", "%20")
+private fun encode(value: String): String = URLEncoder.encode(value, "UTF-8").replace("+", "%20")
 
 private fun groupCode(code: String): String {
     val out = StringBuilder()

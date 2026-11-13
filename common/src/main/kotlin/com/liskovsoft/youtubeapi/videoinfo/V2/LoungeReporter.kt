@@ -1,8 +1,10 @@
 package com.liskovsoft.youtubeapi.videoinfo.V2
+import java.util.UUID
+import java.util.concurrent.atomic.AtomicInteger
 
 class LoungeReporter(private val identity: () -> LoungeIdentity?, private val http: HttpClient,
-    private val nextRequest: () -> Int = java.util.concurrent.atomic.AtomicInteger(1337).let { counter -> { counter.incrementAndGet() } },
-    private val nonce: () -> String = { java.util.UUID.randomUUID().toString().replace("-","").take(16) }) {
+    private val nextRequest: () -> Int = AtomicInteger(1337).let { counter -> { counter.incrementAndGet() } },
+    private val nonce: () -> String = { UUID.randomUUID().toString().replace("-","").take(16) }) {
     constructor(connection: LoungeConnection, http: HttpClient) : this(connection::identity,http,connection::nextRequestId)
     private var ofs=0
     private var video:String?=null
@@ -13,7 +15,7 @@ class LoungeReporter(private val identity: () -> LoungeIdentity?, private val ht
         if(query.url.isBlank()) return ReadResult(error=RequestError(RequestFailure.INVALID,"invalid_lounge_report"))
         var url=urlWithParameter(query.url,"RID",nextRequest().toString())
         url=urlWithParameter(url,"AID",maxOf(0,current.acknowledged).toString())
-        url=urlWithParameter(url,"zx",java.util.UUID.randomUUID().toString().replace("-",""))
+        url=urlWithParameter(url,"zx",UUID.randomUUID().toString().replace("-",""))
         val result=requestBody(query.copy(url=url).request(),http)
         return if(result.ok) ReadResult(true) else ReadResult(error=result.error)
     }

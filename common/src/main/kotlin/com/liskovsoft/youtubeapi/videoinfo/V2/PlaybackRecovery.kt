@@ -1,8 +1,9 @@
 package com.liskovsoft.youtubeapi.videoinfo.V2
+import java.util.LinkedHashMap
 
 class PlaybackRecovery(private val session: PlaybackSession) {
     private data class Budget(var refreshed: Boolean = false, var fallback: Boolean = false, val refused: MutableSet<PlayerClient> = LinkedHashSet())
-    private val budgets = java.util.LinkedHashMap<String, Budget>()
+    private val budgets = LinkedHashMap<String, Budget>()
     @Synchronized fun recover(failed: PlaybackLoad, failedUrl: String, status: Int? = null, transportFailed: Boolean = false,
         preference: PlaybackPreference = failed.source?.preference ?: PlaybackPreference()): ReadResult<PlaybackLoad> {
         val source = session.source(failed) ?: return rejected("unknown_source")

@@ -2,6 +2,7 @@ package com.liskovsoft.youtubeapi.videoinfo.V2
 
 import java.net.HttpCookie
 import java.net.URLEncoder
+import java.util.Locale
 
 /** Host-persisted anonymous identity. This type never accepts signed-in account cookies. */
 class VisitorSession(cookies: String, val visitorData: String) {
@@ -95,12 +96,12 @@ private fun mergeVisitorCookies(jar: LinkedHashMap<String, String>, reply: HttpR
         for (raw in part.split(';').drop(1)) {
             val attribute = raw.trim()
             if (attribute.isEmpty()) continue
-            val key = attribute.substringBefore('=').lowercase(java.util.Locale.ROOT)
+            val key = attribute.substringBefore('=').lowercase(Locale.ROOT)
             if (key in attributes) { malformed = true; break }
             attributes[key] = attribute.substringAfter('=', "").trim()
         }
         if (malformed) continue
-        val domain = attributes["domain"]?.removePrefix(".")?.lowercase(java.util.Locale.ROOT)
+        val domain = attributes["domain"]?.removePrefix(".")?.lowercase(Locale.ROOT)
         if (domain != null && domain !in setOf("youtube.com", "www.youtube.com")) continue
         if (attributes["path"]?.let { it != "/" } == true) continue
         if (name.startsWith("__Secure-") && "secure" !in attributes) continue

@@ -1,5 +1,7 @@
 package com.liskovsoft.youtubeapi.videoinfo.V2
 
+import java.net.URLDecoder
+
 /** Large page reads need the JSON data, without response formatting whitespace. */
 internal fun PlayerQuery.withCompactResponse(): PlayerQuery {
     if (!url.startsWith(YOUTUBE_API)) return this
@@ -7,7 +9,7 @@ internal fun PlayerQuery.withCompactResponse(): PlayerQuery {
     val parameters = base.substringAfter('?', "").split('&')
     if (parameters.any { parameter ->
         val name = parameter.substringBefore('=')
-        name == "prettyPrint" || runCatching { java.net.URLDecoder.decode(name, "UTF-8") }.getOrNull() == "prettyPrint"
+        name == "prettyPrint" || runCatching { URLDecoder.decode(name, "UTF-8") }.getOrNull() == "prettyPrint"
     }) return this
     val separator = when {
         '?' !in base -> "?"
@@ -121,7 +123,10 @@ internal fun readBrowsePage(root: Json.Obj, continuation: Boolean = false): Read
 internal fun readSearchPage(root: Json.Obj, continuation: Boolean = false): ReadResult<SearchPage> {
     val collection = ownedSearchCollection(root, continuation)
         ?: return ReadResult(error = RequestError(RequestFailure.PARSE, "unknown_search_page"))
-    return ReadResult(searchPage(root, collection))
+    val actions = ownedSearchActions(root)
+    if (actions?.valid == false)
+        return ReadResult(error = RequestError(RequestFailure.PARSE, "unknown_search_action_source"))
+    return ReadResult(searchPage(root, collection, actions))
 }
 
 internal fun readChannelPage(root: Json.Obj, channelId: String, continuation: Boolean): ReadResult<ChannelPage> {

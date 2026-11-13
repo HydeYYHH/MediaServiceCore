@@ -1,5 +1,7 @@
 package com.liskovsoft.youtubeapi.videoinfo.V2
 
+import java.io.IOException
+
 import org.junit.Assert.*
 import org.junit.Test
 
@@ -64,7 +66,7 @@ class SearchHistoryTest {
 
     @Test fun remoteHttpActionParseAndTransportFailuresPreserveLocalEntries() {
         val failures = listOf(http(503, "{}"), http(200, """{"success":false}"""), http(200, "not JSON"),
-            object : HttpClient { override fun execute(request: HttpRequest): HttpReply = throw java.io.IOException("fixture") })
+            object : HttpClient { override fun execute(request: HttpRequest): HttpReply = throw IOException("fixture") })
         for (transport in failures) {
             val store = Store(); val history = SearchHistory(store)
             history.record("retain", personal)

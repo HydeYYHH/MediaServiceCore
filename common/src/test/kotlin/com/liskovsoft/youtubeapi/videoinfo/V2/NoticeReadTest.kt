@@ -2,6 +2,7 @@ package com.liskovsoft.youtubeapi.videoinfo.V2
 
 import org.junit.Assert.*
 import org.junit.Test
+import java.io.IOException
 
 class NoticeReadTest {
     private val context = RequestContext(webSession = WebSession("SAPISID=fixture"))
@@ -33,7 +34,7 @@ class NoticeReadTest {
             assertEquals("unknown_notification_page", loadNotices(context, http = http(body)).error!!.code)
         assertEquals(RequestFailure.AUTH, loadNotices(context, http = http("{}", 403)).error!!.kind)
         assertEquals(RequestFailure.TRANSPORT, loadNotices(context, http = object : HttpClient {
-            override fun execute(request: HttpRequest): HttpReply = throw java.io.IOException("failure")
+            override fun execute(request: HttpRequest): HttpReply = throw IOException("failure")
         }).error!!.kind)
         assertEquals(RequestFailure.AUTH, loadNotices(RequestContext(), http = http("{}")).error!!.kind)
         for (empty in listOf("""{"multiPageMenuRenderer":{"sections":[]}}""",

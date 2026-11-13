@@ -20,8 +20,11 @@ internal fun searchPage(root: Json.Obj): SearchPage = searchPage(root, pureOwned
 
 /** The network gate passes its exact projection; output never walks another response subtree. */
 internal fun searchPage(root: Json.Obj, collection: SearchOwnedCollection?): SearchPage {
+    return searchPage(root, collection, ownedSearchActions(root))
+}
+
+internal fun searchPage(root: Json.Obj, collection: SearchOwnedCollection?, owned: SearchOwnedActions?): SearchPage {
     if (collection == null) return SearchPage(emptyList(), emptyList(), null)
-    val owned = ownedSearchActions(root)
     val validActions = owned?.valid != false
     val actions = owned?.actions ?: collection.fragmentActions
     val groups = if (validActions) collection.groups else collection.groups.map { it.copy(actions = emptyList()) }
@@ -40,7 +43,7 @@ fun loadSearch(text: String?, context: RequestContext = RequestContext(), params
     if (!reply.ok) return ReadResult(error = reply.error)
     val parsed = readSearchPage(reply.value!!, continuation != null)
     if (!parsed.ok) return parsed
-    if (ownedSearchActions(reply.value!!)?.valid == false)
-        return ReadResult(error = RequestError(RequestFailure.PARSE, "unknown_search_action_source"))
+    if (text != null && parsed.value!!.filters.any { it.query != null && it.query != text })
+        return ReadResult(error = RequestError(RequestFailure.PARSE, "search_filter_query_mismatch"))
     return parsed
 }

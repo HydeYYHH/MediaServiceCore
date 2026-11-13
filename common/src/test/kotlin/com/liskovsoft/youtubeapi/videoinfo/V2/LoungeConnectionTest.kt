@@ -8,6 +8,7 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
+import java.io.Reader
 class LoungeConnectionTest {
     @Test fun readsFragmentedFramesAndDropsDuplicateCommands() {
         val frames=LoungeFrames()
@@ -23,7 +24,7 @@ class LoungeConnectionTest {
             binds++
             return if(binds==1) HttpReply(403,"") else HttpReply(200,"[[0,[\"c\",\"sid\"]],[1,[\"S\",\"gsid\"]]]")
         }}
-        val transport=object:LoungeTransport { override fun open(request:HttpRequest):java.io.Reader {
+        val transport=object:LoungeTransport { override fun open(request:HttpRequest):Reader {
             assertEquals("token2",urlParameter(request.url,"loungeIdToken"))
             val body="[[2,[\"play\"]]]"
             return object:StringReader(body.length.toString()+"\n"+body){override fun close(){closed=true;super.close()}}
@@ -45,11 +46,11 @@ class LoungeConnectionTest {
             binds++
             return HttpReply(200, """[[0,["c","sid$binds"]],[1,["S","gsid$binds"]]]""")
         } }
-        val transport = object : LoungeTransport { override fun open(request: HttpRequest): java.io.Reader {
+        val transport = object : LoungeTransport { override fun open(request: HttpRequest): Reader {
             val first = ++opens == 1
             val body = """[[2,["play"]]]"""
             val input = StringReader("${body.length}\n$body")
-            return object : java.io.Reader() {
+            return object : Reader() {
                 override fun read(buffer: CharArray, offset: Int, length: Int): Int {
                     if (first) throw IllegalStateException("reader already closed")
                     return input.read(buffer, offset, length)
@@ -75,8 +76,8 @@ class LoungeConnectionTest {
             if (request.body == "count=0") binds.incrementAndGet() else reports.incrementAndGet()
             return HttpReply(200, """[[0,["c","session"]],[1,["S","g-session"]]]""")
         } }
-        val transport = object : LoungeTransport { override fun open(request: HttpRequest): java.io.Reader =
-            object : java.io.Reader() {
+        val transport = object : LoungeTransport { override fun open(request: HttpRequest): Reader =
+            object : Reader() {
                 override fun read(buffer: CharArray, offset: Int, length: Int): Int {
                     entered.countDown()
                     release.await()
@@ -128,8 +129,8 @@ class LoungeConnectionTest {
             reportSession = urlParameter(request.url, "SID")
             return HttpReply(200, "")
         } }
-        val transport = object : LoungeTransport { override fun open(request: HttpRequest): java.io.Reader {
-            if (++opens == 1) return object : java.io.Reader() {
+        val transport = object : LoungeTransport { override fun open(request: HttpRequest): Reader {
+            if (++opens == 1) return object : Reader() {
                 override fun read(buffer: CharArray, offset: Int, length: Int): Int = throw IOException("lost_stream")
                 override fun close() { }
             }

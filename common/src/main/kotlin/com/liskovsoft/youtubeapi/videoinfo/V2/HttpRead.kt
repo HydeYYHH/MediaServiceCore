@@ -13,6 +13,7 @@ import java.net.SocketTimeoutException
 import java.net.URI
 import java.net.URL
 import java.net.UnknownHostException
+import java.util.zip.GZIPInputStream
 import javax.net.ssl.SSLException
 
 data class HttpRequest(val method: String, val url: String, val headers: Map<String, String> = emptyMap(), val body: String = "") {
@@ -43,12 +44,15 @@ class JvmHttpClient(private val timeoutMs: Int = 15000, private val maxBodyBytes
     override fun execute(request: HttpRequest): HttpReply {
         require(request.method in listOf("GET", "POST", "HEAD"))
         val connection = URL(request.url).openConnection() as HttpURLConnection
+        var consumed = false
         try {
             connection.requestMethod = request.method
             connection.instanceFollowRedirects = false
             connection.connectTimeout = timeoutMs
             connection.readTimeout = timeoutMs
             connection.setRequestProperty("User-Agent", "MediaServiceCore")
+            if (request.headers.keys.none { it.equals("Accept-Encoding", true) })
+                connection.setRequestProperty("Accept-Encoding", "gzip")
             for ((name, value) in request.headers) connection.setRequestProperty(name, value)
             if (request.method == "POST") {
                 connection.doOutput = true
@@ -56,21 +60,33 @@ class JvmHttpClient(private val timeoutMs: Int = 15000, private val maxBodyBytes
             }
             val status = connection.responseCode
             val stream = if (status in 200..299) connection.inputStream else connection.errorStream
-            val body = stream?.use {
-                val out = ByteArrayOutputStream()
-                val bytes = ByteArray(8192)
-                while (true) {
-                    val count = it.read(bytes)
-                    if (count < 0) break
-                    if (out.size() + count > maxBodyBytes)
-                        throw RequestException(RequestError(RequestFailure.PARSE, "response_too_large"))
-                    out.write(bytes, 0, count)
+            val compressed = connection.getHeaderField("Content-Encoding").equals("gzip", true)
+            val body = stream?.use { input ->
+                val decoded = if (compressed) GZIPInputStream(input) else input
+                decoded.use {
+                    val out = ByteArrayOutputStream()
+                    val bytes = ByteArray(8192)
+                    while (true) {
+                        val count = it.read(bytes)
+                        if (count < 0) break
+                        if (out.size() + count > maxBodyBytes)
+                            throw RequestException(RequestError(RequestFailure.PARSE, "response_too_large"))
+                        out.write(bytes, 0, count)
+                    }
+                    String(out.toByteArray(), Charsets.UTF_8)
                 }
-                String(out.toByteArray(), Charsets.UTF_8)
             }.orEmpty()
-            val headers = connection.headerFields.filterKeys { it != null }.mapValues { it.value.joinToString(", ") }
+            val headers = connection.headerFields.filterKeys { it != null &&
+                (!compressed || !it.equals("Content-Encoding", true) && !it.equals("Content-Length", true)) }
+                .mapValues { it.value.joinToString(", ") }
+            consumed = true
             return HttpReply(status, body, headers)
-        } finally { connection.disconnect() }
+        } finally {
+            // Closing a fully consumed body returns its connection to the JDK pool.
+            // Disconnect only an incomplete exchange; disconnecting an idle socket
+            // discards the connection needed by the next page or continuation.
+            if (!consumed) connection.disconnect()
+        }
     }
 }
 internal fun requestBody(request: HttpRequest, http: HttpClient): ReadResult<String> {

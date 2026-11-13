@@ -3,7 +3,7 @@ package com.liskovsoft.youtubeapi.videoinfo.V2
 private const val MENU_URL =
     "https://www.youtube.com/youtubei/v1/notification/get_notification_menu?prettyPrint=false"
 
-data class Notice(
+data class Notice @JvmOverloads constructor(
     val videoId: String?,
     val message: String?,
     val author: String?,
@@ -13,7 +13,9 @@ data class Notice(
     val hideKey: String?,
     val id: String? = null,
     val read: Boolean? = null,
-    val readCommand: NoticeCommand? = null
+    val readCommand: NoticeCommand? = null,
+    val destination: NoticeDestination? = videoId?.takeIf { it.matches(Regex("[A-Za-z0-9_-]{11}")) }?.let { NoticeDestination.Video(it) },
+    val avatar: String? = null
 )
 
 /** Only parsed first-party notification interaction commands can mark a notification read. */
@@ -51,8 +53,9 @@ fun notices(body: String): List<Notice> {
     for (renderer in root.objects("notificationRenderer")) {
         val message = displayText(renderer.obj("shortMessage"))
         val parts = splitMessage(message)
+        val destination = noticeDestination(renderer.obj("navigationEndpoint"))
         parsed.add(Notice(
-            renderer.obj("navigationEndpoint")?.obj("watchEndpoint")?.text("videoId")?.takeIf { it.isNotEmpty() },
+            when (destination) { is NoticeDestination.Video -> destination.videoId; is NoticeDestination.Short -> destination.videoId; else -> null },
             message,
             parts.first,
             parts.second,
@@ -60,7 +63,8 @@ fun notices(body: String): List<Notice> {
             firstThumbnail(renderer.obj("videoThumbnail")),
             hideKey(renderer.obj("contextualMenu")),
             renderer.text("notificationId"), renderer.bool("read"),
-            noticeReadCommand(renderer.obj("recordClickEndpoint"))
+            noticeReadCommand(renderer.obj("recordClickEndpoint")), destination,
+            firstThumbnail(renderer.obj("thumbnail"))
         ))
     }
     return parsed

@@ -91,7 +91,9 @@ internal fun ownedSearchCollection(root: Json.Obj, continuation: Boolean, pureHe
             selected = bodies.single()
         }
     }
-    SearchCollectionReader(false).read(selected, owner, root, ancestors)
+    SearchCollectionReader(false, advertisingEnd = continuation && owner?.text("targetId") == "search-feed" &&
+        ancestors.all(::declaredSearchRoute))
+        .read(selected, owner, root, ancestors)
 }.getOrNull()
 
 /** The pure parser keeps explicit extracted fragments; unknown ancestors are never searched recursively. */
@@ -124,7 +126,7 @@ internal val legacySearchUi = setOf("buttonRenderer", "gridButtonRenderer", "but
 private fun searchMetadataEnd(root: Json.Obj): Boolean = root.fields["responseContext"] is Json.Obj &&
     root.fields.keys.all { it in setOf("responseContext", "trackingParams") } && root.fields["trackingParams"]?.let { it is Json.Str } != false
 
-private class SearchCollectionReader(private val legacy: Boolean) {
+private class SearchCollectionReader(private val legacy: Boolean, private val advertisingEnd: Boolean = false) {
     private class CursorScope(val pageOwned: Boolean = true, val ancestors: List<Json.Obj> = emptyList(),
         val own: ArrayList<String> = ArrayList(), val sections: ArrayList<CursorScope> = ArrayList()) {
         fun descend(nodes: List<Json.Obj>) = CursorScope(pageOwned, ancestors + nodes, own, sections)
@@ -146,6 +148,7 @@ private class SearchCollectionReader(private val legacy: Boolean) {
     private var visited = 0
     private var organic = 0
     private var advertisements = 0
+    private var advertisingRoutesValid = true
     private var auxiliary = 0
     private var empty = 0
     private var displayedActions = 0
@@ -160,9 +163,10 @@ private class SearchCollectionReader(private val legacy: Boolean) {
         val supported = organic > 0 || messages.isNotEmpty() || displayedActions > 0
         val known = supported || auxiliary == 0 && (legacy ||
             cursorCount > 0 && advertisements == 0 || empty > 0 && advertisements == 0 ||
-            advertisements > 0 && cursorCount == 0 && when (val estimate = root.fields["estimatedResults"]) {
+            // A search-feed append can end with ads after the organic results. Its estimate is query-wide.
+            advertisements > 0 && cursorCount == 0 && (advertisingEnd && advertisingRoutesValid || when (val estimate = root.fields["estimatedResults"]) {
                 is Json.Str -> estimate.value == "0"; is Json.Num -> estimate.text == "0"; else -> false
-            })
+            }))
         require(known)
         // Only leaf wrappers that this walk accepted are handed to the shared card mapper.
         val items = contentItems(Json.Arr(cards))
@@ -202,7 +206,10 @@ private class SearchCollectionReader(private val legacy: Boolean) {
         val value = wrapper.obj(kind) ?: error("search slot type")
         when {
             kind in searchAuxiliarySlots -> auxiliary++
-            kind in searchAds || kind in contentRenderers && value.isAdvertisement() -> advertisements++
+            kind in searchAds || kind in contentRenderers && value.isAdvertisement() -> {
+                advertisements++
+                if (advertisingEnd) advertisingRoutesValid = advertisingRoutesValid && scope.ancestors.all(::declaredSearchRoute)
+            }
             kind in contentRenderers -> {
                 require(contentItems(wrapper).isNotEmpty())
                 cards += wrapper; organic++

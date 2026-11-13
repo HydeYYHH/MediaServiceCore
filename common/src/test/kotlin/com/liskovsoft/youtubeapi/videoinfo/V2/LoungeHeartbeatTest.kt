@@ -3,6 +3,7 @@ package com.liskovsoft.youtubeapi.videoinfo.V2
 import org.junit.Assert.*
 import org.junit.Test
 import java.io.StringReader
+import java.io.Reader
 
 class LoungeHeartbeatTest {
     @Test fun countsANoopFrameAsAHealthyConnection() {
@@ -15,7 +16,7 @@ class LoungeHeartbeatTest {
             }
         }
         val transport = object : LoungeTransport {
-            override fun open(request: HttpRequest): java.io.Reader {
+            override fun open(request: HttpRequest): Reader {
                 streams++
                 val frame = if (streams == 1) "[[2,[\"noop\"]]]" else "[[2,[\"play\"]]]"
                 return StringReader(frame.length.toString() + "\n" + frame)

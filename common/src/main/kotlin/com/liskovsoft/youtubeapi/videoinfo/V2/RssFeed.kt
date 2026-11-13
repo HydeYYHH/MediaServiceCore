@@ -4,6 +4,11 @@ import org.w3c.dom.Element
 import javax.xml.parsers.DocumentBuilderFactory
 import javax.xml.parsers.ParserConfigurationException
 import org.xml.sax.SAXException
+import java.io.StringReader
+import java.time.Instant
+import javax.xml.XMLConstants
+import org.xml.sax.InputSource
+import org.xml.sax.helpers.DefaultHandler
 
 data class RssVideo(val videoId:String,val channelId:String?,val title:String?,val author:String?,val published:String?,val thumbnail:String?)
 data class RssFeed(val videos:List<RssVideo>,val failures:Map<String,RequestError>)
@@ -32,13 +37,13 @@ internal fun parseRssVideos(body: String, factory: DocumentBuilderFactory): Read
             "http://xml.org/sax/features/external-parameter-entities" to false)) {
             try { factory.setFeature(feature, enabled) } catch (_: ParserConfigurationException) { }
         }
-        for (attribute in listOf(javax.xml.XMLConstants.ACCESS_EXTERNAL_DTD, javax.xml.XMLConstants.ACCESS_EXTERNAL_SCHEMA)) {
+        for (attribute in listOf(XMLConstants.ACCESS_EXTERNAL_DTD, XMLConstants.ACCESS_EXTERNAL_SCHEMA)) {
             try { factory.setAttribute(attribute, "") } catch (_: IllegalArgumentException) { }
         }
         val builder=factory.newDocumentBuilder()
         builder.setEntityResolver { _, _ -> throw SAXException("external_xml_reference_rejected") }
-        builder.setErrorHandler(org.xml.sax.helpers.DefaultHandler())
-        val document=builder.parse(org.xml.sax.InputSource(java.io.StringReader(body.removePrefix("\uFEFF"))))
+        builder.setErrorHandler(DefaultHandler())
+        val document=builder.parse(InputSource(StringReader(body.removePrefix("\uFEFF"))))
         val atom="http://www.w3.org/2005/Atom"
         if(document.documentElement.localName!="feed" || document.documentElement.namespaceURI!=atom)
             return ReadResult(error=RequestError(RequestFailure.PARSE,"invalid_rss_feed"))
@@ -70,6 +75,6 @@ fun loadRssFeed(channelIds:List<String>,http:HttpClient=JvmHttpClient()):ReadRes
         if(!parsed.ok){failures[channel]=parsed.error!!;continue}
         videos.addAll(parsed.value!!.map {it.copy(channelId=it.channelId ?: channel)})
     }
-    fun published(video:RssVideo)=try{java.time.Instant.parse(video.published).toEpochMilli()}catch(_:Exception){Long.MIN_VALUE}
+    fun published(video:RssVideo)=try{Instant.parse(video.published).toEpochMilli()}catch(_:Exception){Long.MIN_VALUE}
     return ReadResult(RssFeed(videos.distinctBy {it.videoId}.sortedByDescending(::published),failures))
 }

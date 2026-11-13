@@ -2,6 +2,9 @@ package com.liskovsoft.youtubeapi.videoinfo.V2
 
 import java.io.Reader
 import java.io.IOException
+import java.io.Closeable
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 
 interface LoungeTransport { fun open(request: HttpRequest): Reader }
 data class LoungeIdentity(val screenName: String, val deviceId: String, val screen: LoungeScreen, val session: LoungeSession,
@@ -45,12 +48,12 @@ internal class LoungeFrames(initialId: Long = -1, private val maxChars: Int = 10
 }
 class LoungeConnection(private val screenName: String, private val deviceId: String, private val screen: () -> LoungeScreen,
     private val http: HttpClient, private val transport: LoungeTransport, wait: ((Long) -> Unit)? = null,
-    private val maxReconnects: Int = 3) : java.io.Closeable {
+    private val maxReconnects: Int = 3) : Closeable {
     @Volatile private var closed = false
     @Volatile private var reader: Reader? = null
     @Volatile private var current: LoungeIdentity? = null
-    private val running = java.util.concurrent.atomic.AtomicBoolean()
-    private val requests = java.util.concurrent.atomic.AtomicInteger()
+    private val running = AtomicBoolean()
+    private val requests = AtomicInteger()
     private val waiting = ConnectionWait(wait)
     init { require(screenName.isNotBlank() && deviceId.isNotBlank() && maxReconnects >= 0) }
     fun identity() = if (closed) null else current

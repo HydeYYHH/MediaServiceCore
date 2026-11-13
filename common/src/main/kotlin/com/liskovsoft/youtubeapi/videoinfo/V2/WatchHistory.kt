@@ -2,6 +2,7 @@ package com.liskovsoft.youtubeapi.videoinfo.V2
 
 import java.net.URI
 import java.util.LinkedHashMap
+import java.util.Locale
 import java.util.UUID
 
 data class PlayerTracking(val playbackUrl: String?, val watchTimeUrl: String?)
@@ -43,7 +44,7 @@ private fun loadNativeWatchTracking(videoId: String, context: RequestContext, ht
     val status = answer.status
     if (status != "OK") {
         val failure = if (status == "LOGIN_REQUIRED") RequestFailure.AUTH else RequestFailure.UNSUPPORTED
-        val code = status?.takeIf { it.matches(Regex("[A-Z_]{1,48}")) }?.let { "playability_${it.lowercase(java.util.Locale.ROOT)}" }
+        val code = status?.takeIf { it.matches(Regex("[A-Z_]{1,48}")) }?.let { "playability_${it.lowercase(Locale.ROOT)}" }
             ?: return ReadResult(error = RequestError(RequestFailure.PARSE, "missing_playability_status"))
         return ReadResult(error = RequestError(failure, code))
     }

@@ -1,4 +1,7 @@
 package com.liskovsoft.youtubeapi.videoinfo.V2
+import java.io.Closeable
+import java.util.LinkedHashSet
+import java.util.concurrent.atomic.AtomicBoolean
 
 data class ChatMessage(val id: String?, val author: String?, val text: String?, val photo: String?, val timestampUs: Long?, val kind: String,
     val authorId: String? = null)
@@ -120,10 +123,10 @@ internal class ChatSessionBinding(private val session: AccountSession) {
 }
 
 /** One live-chat page at a time; hosts can suspend between reads without retaining an HTTP worker. */
-class ChatPoller(key: String, session: AccountSession = AccountSession()) : java.io.Closeable {
+class ChatPoller(key: String, session: AccountSession = AccountSession()) : Closeable {
     @Volatile private var closed = false
     private var next: String? = key
-    private val seen = java.util.LinkedHashSet<String>()
+    private val seen = LinkedHashSet<String>()
     private val binding = ChatSessionBinding(session)
     @Volatile private var latestPage: ChatPage? = null
 
@@ -172,10 +175,10 @@ class ChatPoller(key: String, session: AccountSession = AccountSession()) : java
 }
 
 class ChatConnection(private val session: AccountSession = AccountSession(), private val http: HttpClient = JvmHttpClient(),
-    wait: ((Long) -> Unit)? = null) : java.io.Closeable {
+    wait: ((Long) -> Unit)? = null) : Closeable {
     @Volatile private var closed = false
     private val waiting = ConnectionWait(wait)
-    private val running = java.util.concurrent.atomic.AtomicBoolean()
+    private val running = AtomicBoolean()
     private val binding = ChatSessionBinding(session)
     override fun close() { closed = true; waiting.close() }
 

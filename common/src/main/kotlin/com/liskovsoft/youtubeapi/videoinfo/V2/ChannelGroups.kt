@@ -1,9 +1,10 @@
 package com.liskovsoft.youtubeapi.videoinfo.V2
+import java.util.UUID
 
 data class GroupChannel(val id:String,val title:String?,val iconUrl:String?)
 data class ChannelGroup(val id:String,val title:String,val iconUrl:String?,val channels:List<GroupChannel>)
 class ChannelGroups(initial:List<ChannelGroup> = emptyList(),private val save:(List<ChannelGroup>)->Unit = {},
-    private val newId:()->String = {java.util.UUID.randomUUID().toString()}) {
+    private val newId:()->String = {UUID.randomUUID().toString()}) {
     private var groups=initial.map {it.copy(channels=it.channels.toList())}
     init{require(groups.map{it.id}.distinct().size==groups.size)}
     @Synchronized fun read()=groups.map{it.copy(channels=it.channels.toList())}

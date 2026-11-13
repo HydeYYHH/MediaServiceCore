@@ -2,12 +2,14 @@ package com.liskovsoft.youtubeapi.videoinfo.V2
 
 import org.junit.Assert.*
 import org.junit.Test
+import java.net.URI
+import java.net.URLDecoder
 
 /** Models are consumed as a host's download sheet, skip controls and optional metadata panels would use them. */
 class PublicModelConsumerTest {
-    private fun queryParameter(url: String, name: String): String? = java.net.URI(url).rawQuery
+    private fun queryParameter(url: String, name: String): String? = URI(url).rawQuery
         ?.split('&')?.firstOrNull { it.substringBefore('=') == name }?.substringAfter('=')
-        ?.let { java.net.URLDecoder.decode(it, "UTF-8") }
+        ?.let { URLDecoder.decode(it, "UTF-8") }
     @Test fun downloadSheetUsesParsedDimensionsRangesAndAudioProperties() {
         val answer = playerAnswer("""{
           "playabilityStatus":{"status":"OK"},

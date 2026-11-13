@@ -1,8 +1,9 @@
 package com.liskovsoft.youtubeapi.videoinfo.V2
+import java.util.UUID
 
 // Message writes are never retried automatically.
 internal fun sendChatMessage(params: String, text: String, context: RequestContext, http: HttpClient = JvmHttpClient(),
-    clientMessageId: String = java.util.UUID.randomUUID().toString()): ReadResult<ActionReply> {
+    clientMessageId: String = UUID.randomUUID().toString()): ReadResult<ActionReply> {
     if (params.isBlank()) return ReadResult(error = RequestError(RequestFailure.INVALID, "missing_chat_key"))
     val message = text.trim()
     if (message.isEmpty() || message.length > 200) return ReadResult(error = RequestError(RequestFailure.INVALID, "invalid_chat_message"))
@@ -50,7 +51,7 @@ class ChatSender internal constructor(private val params: String, private val bi
     private val postingError: () -> RequestError?) {
 
     fun send(text: String, http: HttpClient = JvmHttpClient(),
-        clientMessageId: String = java.util.UUID.randomUUID().toString()): ReadResult<ActionReply> {
+        clientMessageId: String = UUID.randomUUID().toString()): ReadResult<ActionReply> {
         val context = binding.snapshot()
         if (!context.ok) return ReadResult(error = context.error)
         postingError()?.let { return ReadResult(error = it) }

@@ -3,6 +3,9 @@ package com.liskovsoft.youtubeapi.videoinfo.V2
 import java.io.IOException
 import org.junit.Assert.*
 import org.junit.Test
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 class PlaylistMembershipTest {
     private val video = "jNQXAC9IVRw"
@@ -311,44 +314,44 @@ class PlaylistMembershipTest {
     }
 
     @Test fun separateDirectoriesShareUnresolvedWriteProtectionWithoutHoldingTheAccountLock() {
-        val entered = java.util.concurrent.CountDownLatch(1)
-        val release = java.util.concurrent.CountDownLatch(1)
+        val entered = CountDownLatch(1)
+        val release = CountDownLatch(1)
         val session = signed()
         val http = Transport { request, _ -> when {
             request.url.contains("get_add_to_playlist") -> HttpReply(200, choices(choice("NONE")))
             request.url.contains("edit_playlist") -> {
                 entered.countDown()
-                assertTrue(release.await(5, java.util.concurrent.TimeUnit.SECONDS))
+                assertTrue(release.await(5, TimeUnit.SECONDS))
                 throw IOException("response lost before state becomes observable")
             }
             else -> HttpReply(200, listPage(emptyList()))
         } }
         val service = PlaylistMembershipSession(session, http)
         val first = service.open(video).value!!; val second = service.open(video).value!!
-        val pool = java.util.concurrent.Executors.newFixedThreadPool(2)
+        val pool = Executors.newFixedThreadPool(2)
         try {
             val one = pool.submit<PlaylistMembershipUpdate> { first.setContains(first.entries.single(), true).value!! }
-            assertTrue(entered.await(5, java.util.concurrent.TimeUnit.SECONDS))
+            assertTrue(entered.await(5, TimeUnit.SECONDS))
             val two = pool.submit<PlaylistMembershipUpdate> { second.setContains(second.entries.single(), true).value!! }
             // Snapshot must remain usable while the first remote operation is in flight.
             assertTrue(session.snapshot().signedIn)
             release.countDown()
-            assertTrue(one.get(5, java.util.concurrent.TimeUnit.SECONDS).submitted)
-            val blocked = two.get(5, java.util.concurrent.TimeUnit.SECONDS)
+            assertTrue(one.get(5, TimeUnit.SECONDS).submitted)
+            val blocked = two.get(5, TimeUnit.SECONDS)
             assertFalse(blocked.submitted); assertEquals("membership_write_unresolved", blocked.readError?.code)
             assertEquals(1, http.edits())
         } finally { release.countDown(); pool.shutdownNow() }
     }
 
     @Test fun concurrentDirectoriesReadTheCommittedTargetBeforeTheirOwnDecision() {
-        val entered = java.util.concurrent.CountDownLatch(1)
-        val release = java.util.concurrent.CountDownLatch(1)
+        val entered = CountDownLatch(1)
+        val release = CountDownLatch(1)
         var contains = false
         val http = Transport { request, _ -> when {
             request.url.contains("get_add_to_playlist") -> HttpReply(200, choices(choice("NONE")))
             request.url.contains("edit_playlist") -> {
                 entered.countDown()
-                assertTrue(release.await(5, java.util.concurrent.TimeUnit.SECONDS))
+                assertTrue(release.await(5, TimeUnit.SECONDS))
                 contains = true
                 HttpReply(200, """{"status":"SUCCESS"}""")
             }
@@ -356,14 +359,14 @@ class PlaylistMembershipTest {
         } }
         val service = PlaylistMembershipSession(signed(), http)
         val first = service.open(video).value!!; val second = service.open(video).value!!
-        val pool = java.util.concurrent.Executors.newFixedThreadPool(2)
+        val pool = Executors.newFixedThreadPool(2)
         try {
             val one = pool.submit<PlaylistMembershipUpdate> { first.setContains(first.entries.single(), true).value!! }
-            assertTrue(entered.await(5, java.util.concurrent.TimeUnit.SECONDS))
+            assertTrue(entered.await(5, TimeUnit.SECONDS))
             val two = pool.submit<PlaylistMembershipUpdate> { second.setContains(second.entries.single(), true).value!! }
             release.countDown()
-            assertEquals(PlaylistMembershipOutcome.VERIFIED, one.get(5, java.util.concurrent.TimeUnit.SECONDS).outcome)
-            val noOp = two.get(5, java.util.concurrent.TimeUnit.SECONDS)
+            assertEquals(PlaylistMembershipOutcome.VERIFIED, one.get(5, TimeUnit.SECONDS).outcome)
+            val noOp = two.get(5, TimeUnit.SECONDS)
             assertEquals(PlaylistMembershipOutcome.ALREADY_MATCHED, noOp.outcome)
             assertFalse(noOp.submitted); assertEquals(1, http.edits())
         } finally { release.countDown(); pool.shutdownNow() }

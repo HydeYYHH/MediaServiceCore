@@ -2,10 +2,11 @@ package com.liskovsoft.youtubeapi.videoinfo.V2
 import org.junit.Assert.*
 import org.junit.Test
 import java.util.concurrent.*
+import java.util.concurrent.atomic.AtomicInteger
 class PlaybackSessionTest {
     @Test fun cancellingAFollowerLeavesTheLeaderRunning() {
         val entered=CountDownLatch(1);val release=CountDownLatch(1)
-        val calls=java.util.concurrent.atomic.AtomicInteger()
+        val calls=AtomicInteger()
         val http=object:HttpClient { override fun execute(request:HttpRequest):HttpReply {
             calls.incrementAndGet();entered.countDown();release.await(5,TimeUnit.SECONDS)
             return HttpReply(200,"{\"streamingData\":{\"formats\":[{\"url\":\"https://media\"}]}}")
@@ -26,7 +27,7 @@ class PlaybackSessionTest {
     }
     @Test fun coalescesTheSameDemandWithoutSharingAnotherAccountsLoad() {
         val entered = CountDownLatch(1); val release = CountDownLatch(1)
-        val calls = java.util.concurrent.atomic.AtomicInteger()
+        val calls = AtomicInteger()
         val http = object : HttpClient { override fun execute(request: HttpRequest): HttpReply {
             calls.incrementAndGet(); entered.countDown(); release.await(2, TimeUnit.SECONDS)
             return HttpReply(200, """{"streamingData":{"formats":[{"url":"https://media"}]}}""")

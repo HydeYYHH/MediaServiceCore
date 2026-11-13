@@ -8,6 +8,7 @@ internal fun ownedSearchFilters(root: Json.Obj, legacy: Boolean): List<SearchFil
 private class SearchFilterReader {
     private val result = ArrayList<SearchFilter>()
     private var nodes = 0
+    private var groups = 0
     private fun tick(depth: Int) { require(++nodes <= 2048 && depth <= 24) }
     private val tracking = setOf("trackingParams", "clickTrackingParams")
     private fun kind(wrapper: Json.Obj): String? {
@@ -50,6 +51,7 @@ private class SearchFilterReader {
     }
     private fun group(node: Json.Obj, depth: Int, ancestors: List<Json.Obj>) {
         tick(depth)
+        val groupIndex = groups++
         require((ancestors + node).all(::declaredSearchRoute))
         val carrier = setOf("filters", "contents").filter(node.fields::containsKey).singleOrNull() ?: error("search filter collection")
         val array = node.fields[carrier] as? Json.Arr ?: error("search filter items")
@@ -65,14 +67,17 @@ private class SearchFilterReader {
             require(carriers.isEmpty() || carriers == listOf("navigationEndpoint"))
             val selected = item.text("status") == "FILTER_STATUS_SELECTED"
             val navigation = item.fields["navigationEndpoint"]?.let { it as? Json.Obj ?: error("search filter command type") }
+            var query: String? = null
             val params = navigation?.let { command ->
                 require(declaredSearchRoute(command))
                 require((command.fields.keys - tracking - "commandMetadata").singleOrNull() == "searchEndpoint")
                 val endpoint = command.obj("searchEndpoint") ?: error("search filter endpoint")
+                require(endpoint.fields["query"]?.let { it is Json.Str && it.value.isNotBlank() } != false)
+                query = endpoint.text("query")
                 require(declaredSearchRoute(endpoint) && endpoint.fields["params"]?.let { it is Json.Str } != false)
                 endpoint.text("params")?.takeIf(String::isNotBlank)
             }
-            if (params != null || selected) result += SearchFilter(item.display("label"), node.display("title"), params, selected)
+            if (params != null || selected) result += SearchFilter(item.display("label"), node.display("title"), params, selected, query, groupIndex)
         }
     }
     private fun control(wrapper: Json.Obj, depth: Int, ancestors: List<Json.Obj>) {
