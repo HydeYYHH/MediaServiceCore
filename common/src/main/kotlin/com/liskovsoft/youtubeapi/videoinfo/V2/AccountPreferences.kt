@@ -62,14 +62,19 @@ class AccountPreferencesSession(private val account: AccountSession) {
         if (command.issuer !== this || command.scope != context.ledgerScope())
             return preferenceError(RequestFailure.AUTH, "account_preference_session_changed")
         val transport = guarded(context, http)
-        val fields = command.fields.encode().removeSurrounding("{", "}")
+        val valueFields = command.fields.fields.filterKeys { it in setOf("boolValue", "stringValue", "intValue") }
+        val wireFields = mapOf("settingItemId" to requireNotNull(command.fields.fields["settingItemId"]),
+            "newValue" to Json.Obj(valueFields))
+        val fields = Json.Obj(wireFields).encode().removeSurrounding("{", "}")
         val mutation = signedAction("account/set_setting", fields, context, transport)
         if (!mutation.ok) return ReadResult(error = mutation.error)
-        val readback = load(command.section, context, transport)
-        if (!readback.ok) return ReadResult(error = readback.error)
-        val page = requireNotNull(readback.value)
-        return if (matches(page)) ReadResult(page)
-        else preferenceError(RequestFailure.HTTP, "account_preference_unconfirmed", mutation.value?.httpStatus)
+        repeat(3) {
+            val readback = load(command.section, context, transport)
+            if (!readback.ok) return ReadResult(error = readback.error)
+            val page = requireNotNull(readback.value)
+            if (matches(page)) return ReadResult(page)
+        }
+        return preferenceError(RequestFailure.HTTP, "account_preference_unconfirmed", mutation.value?.httpStatus)
     }
 
     private fun load(section: AccountPreferencesSection, context: RequestContext,
