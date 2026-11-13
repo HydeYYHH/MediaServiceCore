@@ -11,6 +11,7 @@ private class NotificationBoundary {
     private val menuKinds = setOf("multiPageMenuRenderer", "multiPageMenuNotificationSectionRenderer", "notificationSectionRenderer", "messageRenderer")
     private val itemKinds = menuKinds + setOf("notificationRenderer", "continuationItemRenderer")
     private val commandKinds = setOf("openPopupAction", "appendContinuationItemsAction", "reloadContinuationItemsCommand")
+    private val continuationKinds = setOf("nextContinuationData", "reloadContinuationData", "timedContinuationData", "invalidationContinuationData")
 
     fun read(root: Json.Obj): NoticePage? {
         val direct = root.fields.keys.filter { it in menuKinds || it == "sections" }
@@ -49,7 +50,7 @@ private class NotificationBoundary {
             "continuationItemRenderer" -> {
                 val token = body.path("continuationEndpoint", "continuationCommand")?.text("token")?.takeIf(String::isNotBlank)
                     ?: return false
-                if (next != null && next != token) false else { next = token; true }
+                acceptCursor(token)
             }
             else -> menu(kind, body, depth + 1)
         }
@@ -65,9 +66,30 @@ private class NotificationBoundary {
                 if (only?.fields?.containsKey("backgroundPromoRenderer") == true) emptyNotificationMenu(body, only)
                 else list(sections, depth + 1)
             }
-            "multiPageMenuNotificationSectionRenderer", "notificationSectionRenderer" -> list(body.fields["items"], depth + 1)
+            "multiPageMenuNotificationSectionRenderer", "notificationSectionRenderer" ->
+                list(body.fields["items"], depth + 1) && continuations(body.fields["continuations"])
             "messageRenderer" -> !body.display("text").isNullOrBlank()
             else -> false
+        }
+    }
+
+    private fun acceptCursor(token: String): Boolean {
+        if (next != null && next != token) return false
+        next = token
+        return true
+    }
+
+    private fun continuations(value: Json?): Boolean {
+        if (value == null) return true
+        val array = value as? Json.Arr ?: return false
+        if (array.items.size > 2_000) return false
+        return array.items.all { entry ->
+            if (++visited > 4_000) return false
+            val node = entry as? Json.Obj ?: return false
+            val kind = node.fields.keys.filter { it in continuationKinds }.singleOrNull() ?: return false
+            if (node.fields.keys.any { it !in continuationKinds && it !in metadata }) return false
+            val token = node.obj(kind)?.text("continuation")?.takeIf(String::isNotBlank) ?: return false
+            acceptCursor(token)
         }
     }
 

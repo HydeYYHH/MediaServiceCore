@@ -2,6 +2,7 @@ package com.liskovsoft.youtubeapi.videoinfo.V2
 
 import org.junit.Assert.*
 import org.junit.Test
+import java.net.URI
 
 class NoticeBoundaryTest {
     private val context = RequestContext(webSession = WebSession("SAPISID=fixture"))
@@ -189,4 +190,91 @@ class NoticeBoundaryTest {
         // Total document parsing remains separate from the network boundary's explicit PARSE failure.
         rejected("{}")
     }
+
+    private fun sectionCursor(kind: String, token: String) =
+        """{"$kind":{"continuation":"$token"}}"""
+
+    private fun noticeSection(cursors: String, kind: String = "notificationSectionRenderer",
+        items: String = """{"notificationRenderer":{"notificationId":"own","shortMessage":{"simpleText":"Own notice"}}}""") =
+        """{"$kind":{"items":[$items],"continuations":$cursors}}"""
+
+    @Test fun ownedSectionContinuationsReachEveryNextNetworkRequest() {
+        for (sectionKind in listOf("notificationSectionRenderer", "multiPageMenuNotificationSectionRenderer")) {
+            for (continuationKind in listOf("nextContinuationData", "reloadContinuationData", "timedContinuationData", "invalidationContinuationData")) {
+                val section = noticeSection("[${sectionCursor(continuationKind, "first-next")}]", sectionKind)
+                val firstBody = """{"actions":[{"openPopupAction":{"popup":{"multiPageMenuRenderer":{"sections":[$section]}}}}]}"""
+                val secondSection = noticeSection("[${sectionCursor(continuationKind, "second-next")}]", sectionKind,
+                    """{"notificationRenderer":{"notificationId":"second","shortMessage":{"simpleText":"Second notice"}}}""")
+                val secondBody = """{"onResponseReceivedActions":[{"reloadContinuationItemsCommand":{"continuationItems":[$secondSection]}}]}"""
+                var calls = 0
+                val http = object : HttpClient {
+                    override fun execute(request: HttpRequest): HttpReply {
+                        val uri = URI(request.url)
+                        assertEquals("https", uri.scheme)
+                        assertEquals("www.youtube.com", uri.host)
+                        assertEquals("/youtubei/v1/notification/get_notification_menu", uri.path)
+                        assertEquals(if (calls == 0) "prettyPrint=false" else null, uri.rawQuery)
+                        assertEquals("SAPISID=fixture", request.headers["Cookie"])
+                        val body = jsonObject(request.body)!!
+                        assertEquals("WEB", body.path("context", "client")!!.text("clientName"))
+                        return when (calls++) {
+                            0 -> { assertNull(body.text("continuation")); HttpReply(200, firstBody) }
+                            1 -> { assertEquals("first-next", body.text("continuation")); HttpReply(200, secondBody) }
+                            2 -> { assertEquals("second-next", body.text("continuation")); HttpReply(200, noticeSection("[]", sectionKind, "")) }
+                            else -> error("Unexpected request")
+                        }
+                    }
+                }
+                val first = loadNotices(context, http = http)
+                assertTrue(first.error.toString(), first.ok)
+                assertEquals(listOf("own"), first.value!!.notices.map { it.id })
+                assertEquals("first-next", first.value!!.nextKey)
+                assertEquals(noticePage(firstBody).nextKey, first.value!!.nextKey)
+                val second = loadNotices(context, first.value!!.nextKey, http)
+                assertTrue(second.error.toString(), second.ok)
+                assertEquals(listOf("second"), second.value!!.notices.map { it.id })
+                assertEquals("second-next", second.value!!.nextKey)
+                val end = loadNotices(context, second.value!!.nextKey, http)
+                assertTrue(end.error.toString(), end.ok)
+                assertTrue(end.value!!.notices.isEmpty())
+                assertNull(end.value!!.nextKey)
+                assertEquals(3, calls)
+            }
+        }
+    }
+
+    @Test fun ownedSectionCursorsMustAgreeWithEveryOtherOwnedCursor() {
+        val item = """{"continuationItemRenderer":{"continuationEndpoint":{"continuationCommand":{"token":"same"}}}}"""
+        for (kind in listOf("notificationSectionRenderer", "multiPageMenuNotificationSectionRenderer")) {
+            val cursor = sectionCursor("nextContinuationData", "same")
+            val repeated = read(noticeSection("[$cursor,$cursor]", kind, item))
+            assertTrue(repeated.error.toString(), repeated.ok)
+            assertEquals("same", repeated.value!!.nextKey)
+            val refresh = sectionCursor("timedContinuationData", "same")
+            assertEquals("same", read(noticeSection("[$cursor,$refresh]", kind)).value!!.nextKey)
+            rejected(noticeSection("[${sectionCursor("nextContinuationData", "other")}]", kind, item))
+            rejected(noticeSection("[$cursor,${sectionCursor("timedContinuationData", "other")}]", kind))
+            rejected(noticeSection("[$cursor]", kind, """{"futureRenderer":{}}"""))
+        }
+    }
+
+    @Test fun malformedAndUnownedSectionCursorsNeverManufacturePagination() {
+        for (cursors in listOf(
+            "null", "{}", "123", "[null]", "[123]", "[{}]",
+            """[{"futureContinuationData":{"continuation":"foreign"}}]""",
+            """[{"nextContinuationData":null}]""",
+            """[{"nextContinuationData":{"continuation":123}}]""",
+            """[{"nextContinuationData":{"continuation":" "}}]""",
+            """[{"nextContinuationData":{"continuation":"same"},"timedContinuationData":{"continuation":"same"}}]""",
+            """[{"nextContinuationData":{"continuation":"same"},"futureField":{}}]""",
+            """[{"nextContinuationData":{"continuation":"same"}},{"futureContinuationData":{"continuation":"foreign"}}]"""
+        )) rejected(noticeSection(cursors))
+        val owned = noticeSection("[]").dropLast(1) +
+            ""","header":{"continuations":[{"nextContinuationData":{"continuation":"header-next"}}]},"diagnostic":{"continuations":[{"nextContinuationData":{"continuation":"foreign-next"}}]}}"""
+        val page = read(owned)
+        assertTrue(page.error.toString(), page.ok)
+        assertEquals(listOf("own"), page.value!!.notices.map { it.id })
+        assertNull(page.value!!.nextKey)
+    }
+
 }
