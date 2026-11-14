@@ -1,7 +1,7 @@
 package com.liskovsoft.youtubeapi.videoinfo.V2
 
-private const val MENU_URL =
-    "https://www.youtube.com/youtubei/v1/notification/get_notification_menu?prettyPrint=false"
+private const val INBOX_URL =
+    "https://www.youtube.com/youtubei/v1/browse?prettyPrint=false"
 
 data class Notice @JvmOverloads constructor(
     val videoId: String?,
@@ -44,7 +44,7 @@ data class NoticeState @JvmOverloads constructor(
 )
 
 fun noticeQuery(visitor: String?): PlayerQuery {
-    return webQuery(MENU_URL, """"notificationsMenuRequestType":"NOTIFICATIONS_MENU_REQUEST_TYPE_INBOX"""", visitor)
+    return webQuery(INBOX_URL, payload("browseId" to "FEnotifications_inbox"), visitor)
 }
 
 fun notices(body: String): List<Notice> {

@@ -2,6 +2,7 @@ package com.liskovsoft.youtubeapi.videoinfo.V2
 
 import org.junit.Assert.*
 import org.junit.Test
+import java.net.URI
 
 class NoticeDestinationTest {
     private val video = "dQw4w9WgXcQ"
@@ -22,7 +23,7 @@ class NoticeDestinationTest {
         val reply = loadNotices(RequestContext(webSession = WebSession("SAPISID=fixture")), http = object : HttpClient {
             override fun execute(request: HttpRequest): HttpReply {
                 calls++
-                assertTrue(request.url.contains("/notification/get_notification_menu"))
+                assertEquals("/youtubei/v1/browse", URI(request.url).path)
                 return HttpReply(200, inbox(endpoints))
             }
         })

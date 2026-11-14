@@ -5,6 +5,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.net.URI
 
 class NoticeInboxTest {
     private val inbox = """
@@ -42,9 +43,10 @@ class NoticeInboxTest {
         val parsed = loadNotices(RequestContext(visitor = "visitor-1", webSession = WebSession("SAPISID=fixture")), http = object : HttpClient {
             override fun execute(request: HttpRequest): HttpReply {
             val query = PlayerQuery(request.url, request.headers, request.body)
-            assertTrue(query.url.contains("/notification/get_notification_menu"))
+            assertEquals("/youtubei/v1/browse", URI(query.url).path)
             assertEquals("visitor-1", query.headers["X-Goog-Visitor-Id"])
-            assertTrue(query.body.contains("\"notificationsMenuRequestType\":\"NOTIFICATIONS_MENU_REQUEST_TYPE_INBOX\""))
+            assertEquals("FEnotifications_inbox", jsonObject(query.body)!!.text("browseId"))
+            assertFalse(jsonObject(query.body)!!.fields.containsKey("notificationsMenuRequestType"))
             return HttpReply(200, inbox)
             }
         }).value!!.notices

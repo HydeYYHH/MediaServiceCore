@@ -9,6 +9,8 @@ fun noticePage(body: String): NoticePage {
 }
 
 internal fun readNoticePage(root: Json.Obj): ReadResult<NoticePage> {
+    if (actionResponseMetadata(root)["response_signed_in"] == "false")
+        return ReadResult(error = RequestError(RequestFailure.AUTH, "sign_in_required"))
     val page = notificationResponsePage(root)
     return if (page != null) ReadResult(page) else ReadResult(error = RequestError(RequestFailure.PARSE, "unknown_notification_page"))
 }
@@ -47,7 +49,7 @@ fun loadNoticeCount(context: RequestContext, http: HttpClient = JvmHttpClient())
 fun loadNotices(context: RequestContext, continuation: String? = null, http: HttpClient = JvmHttpClient()): ReadResult<NoticePage> {
     if (!context.signedIn) return ReadResult(error = RequestError(RequestFailure.AUTH,"sign_in_required"))
     val query = if (continuation == null) queryInContext(noticeQuery(context.visitor),context) else
-        youtubeQuery(YOUTUBE_API+"notification/get_notification_menu", payload("continuation" to continuation),context)
+        youtubeQuery(YOUTUBE_API+"browse", payload("continuation" to continuation),context)
     val reply = requestObject(query,http)
     return if (reply.ok) readNoticePage(reply.value!!) else ReadResult(error=reply.error)
 }

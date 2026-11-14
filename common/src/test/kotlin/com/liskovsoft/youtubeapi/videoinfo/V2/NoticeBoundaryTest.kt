@@ -212,7 +212,7 @@ class NoticeBoundaryTest {
                         val uri = URI(request.url)
                         assertEquals("https", uri.scheme)
                         assertEquals("www.youtube.com", uri.host)
-                        assertEquals("/youtubei/v1/notification/get_notification_menu", uri.path)
+                        assertEquals("/youtubei/v1/browse", uri.path)
                         assertEquals(if (calls == 0) "prettyPrint=false" else null, uri.rawQuery)
                         assertEquals("SAPISID=fixture", request.headers["Cookie"])
                         val body = jsonObject(request.body)!!
