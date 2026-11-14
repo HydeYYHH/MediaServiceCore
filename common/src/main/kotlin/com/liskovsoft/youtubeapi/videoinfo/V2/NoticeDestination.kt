@@ -17,7 +17,7 @@ internal fun noticeDestination(endpoint: Json.Obj?): NoticeDestination? {
     endpoint ?: return null
     val wrapper = endpoint.obj("innertubeCommand")
     val command = wrapper ?: endpoint
-    val kinds = setOf("watchEndpoint", "reelWatchEndpoint", "watchPlaylistEndpoint", "browseEndpoint")
+    val kinds = setOf("watchEndpoint", "reelWatchEndpoint", "watchPlaylistEndpoint", "browseEndpoint", "getCommentsFromInboxCommand")
     val commands = command.fields.keys.filter { it.endsWith("Endpoint") || it.endsWith("Command") }
     val kind = commands.singleOrNull()?.takeIf { it in kinds } ?: return null
     if (wrapper != null && endpoint.fields.keys.any { it != "innertubeCommand" && (it.endsWith("Endpoint") || it.endsWith("Command")) }) return null
@@ -36,6 +36,15 @@ internal fun noticeDestination(endpoint: Json.Obj?): NoticeDestination? {
             if (uri != null && (uri.rawPath != "/watch" || noticeQueryValue(uri, "v") != it)) return null
             val start = if (target.fields.containsKey("startTimeSeconds")) target.long("startTimeSeconds")?.takeIf { it >= 0 } ?: return null else null
             NoticeDestination.Video(it, start)
+        } else null
+        "getCommentsFromInboxCommand" -> if (compatible("WEB_PAGE_TYPE_WATCH")) videoId()?.let {
+            val declared = metadata.filter { it.fields.containsKey("apiUrl") }
+            if (declared.isEmpty() || declared.any { it.text("apiUrl") != "/youtubei/v1/notification/get_notification_menu" }) return null
+            if (metadata.none { it.bool("sendPost") == true } ||
+                metadata.any { it.fields.containsKey("sendPost") && it.bool("sendPost") != true }) return null
+            if (target.fields.containsKey("linkedCommentId") && target.text("linkedCommentId").isNullOrBlank()) return null
+            if (uri != null && (uri.rawPath != "/watch" || noticeQueryValue(uri, "v") != it)) return null
+            NoticeDestination.Video(it)
         } else null
         "reelWatchEndpoint" -> if (compatible("WEB_PAGE_TYPE_SHORTS", "WEB_PAGE_TYPE_WATCH")) videoId()?.let {
             if (uri != null && uri.rawPath != "/shorts/$it") return null

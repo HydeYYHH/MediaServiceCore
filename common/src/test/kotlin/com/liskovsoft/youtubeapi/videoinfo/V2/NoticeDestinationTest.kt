@@ -58,6 +58,54 @@ class NoticeDestinationTest {
         ).forEach { assertNull(destination(it)) }
     }
 
+    @Test fun inboxCommentCommandsOpenTheirDeclaredVideoWithoutResolvingTheService() {
+        val command = """{"videoId":"$video","linkedCommentId":"fixture-linked-comment"}"""
+        val metadata = """{"webCommandMetadata":{"sendPost":true,"apiUrl":"/youtubei/v1/notification/get_notification_menu"}}"""
+        val endpoint = """{"commandMetadata":$metadata,"getCommentsFromInboxCommand":$command}"""
+        val wrapped = """{"commandMetadata":$metadata,"innertubeCommand":{"getCommentsFromInboxCommand":$command}}"""
+        assertEquals(NoticeDestination.Video(video), destination(wrapped))
+        var calls = 0
+        val result = loadNotices(RequestContext(webSession = WebSession("SAPISID=fixture")), http = object : HttpClient {
+            override fun execute(request: HttpRequest): HttpReply {
+                calls++
+                assertEquals("/youtubei/v1/browse", URI(request.url).path)
+                assertEquals("FEnotifications_inbox", jsonObject(request.body)!!.text("browseId"))
+                return HttpReply(200, inbox(listOf(endpoint)))
+            }
+        })
+        assertTrue(result.error.toString(), result.ok)
+        val notice = result.value!!.notices.single()
+        assertEquals(NoticeDestination.Video(video), notice.destination)
+        assertEquals(video, notice.videoId)
+        assertTrue(notice.readCommand != null)
+        assertEquals(1, calls)
+    }
+
+    @Test fun inboxCommentCommandsRejectConflictingMetadataAndMixedTargets() {
+        val payload = """{"videoId":"$video","linkedCommentId":"fixture-linked-comment"}"""
+        val route = """"apiUrl":"/youtubei/v1/notification/get_notification_menu""""
+        val command = """"getCommentsFromInboxCommand":$payload"""
+        val goodMetadata = """{"webCommandMetadata":{"sendPost":true,$route}}"""
+        listOf(
+            """{$command}""",
+            """{"commandMetadata":{"webCommandMetadata":{$route}},$command}""",
+            """{"commandMetadata":{"webCommandMetadata":{"sendPost":false,$route}},$command}""",
+            """{"commandMetadata":{"webCommandMetadata":{"sendPost":"true",$route}},$command}""",
+            """{"commandMetadata":{"webCommandMetadata":{"sendPost":true}},$command}""",
+            """{"commandMetadata":{"webCommandMetadata":{"sendPost":true,"apiUrl":"/youtubei/v1/browse"}},$command}""",
+            """{"commandMetadata":{"webCommandMetadata":{"sendPost":true,"apiUrl":"https://example.com/youtubei/v1/notification/get_notification_menu"}},$command}""",
+            """{"commandMetadata":$goodMetadata,$command,"watchEndpoint":{"videoId":"$video"}}""",
+            """{"commandMetadata":$goodMetadata,"getCommentsFromInboxCommand":{"videoId":"invalid"}}""",
+            """{"commandMetadata":$goodMetadata,"getCommentsFromInboxCommand":{"videoId":123}}""",
+            """{"commandMetadata":$goodMetadata,"getCommentsFromInboxCommand":{"videoId":"$video","linkedCommentId":123}}""",
+            """{"commandMetadata":{"webCommandMetadata":{"sendPost":true,$route,"webPageType":"WEB_PAGE_TYPE_POST_DETAIL"}},$command}""",
+            """{"commandMetadata":{"webCommandMetadata":{"sendPost":true,$route,"url":"/watch?v=aaaaaaaaaaa"}},$command}""",
+            """{"commandMetadata":$goodMetadata,"innertubeCommand":{"commandMetadata":{"webCommandMetadata":{"sendPost":true,"apiUrl":"/youtubei/v1/browse"}},$command}}""",
+            """{"commandMetadata":{"webCommandMetadata":{"sendPost":false,$route}},"innertubeCommand":{"commandMetadata":$goodMetadata,$command}}""",
+            """{"commandMetadata":{"webCommandMetadata":{"sendPost":true,"apiUrl":"/youtubei/v1/browse"}},"innertubeCommand":{"commandMetadata":$goodMetadata,$command}}"""
+        ).forEach { assertNull(destination(it)) }
+    }
+
     @Test fun aPostRequiresItsExplicitPageTypeAndAnExactFirstPartyRoute() {
         listOf(
             "https://example.com/post/$post", "https://www.youtube.com.example.com/post/$post",
